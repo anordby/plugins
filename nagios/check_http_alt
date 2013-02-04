@@ -1,0 +1,223 @@
+#! /usr/bin/perl
+# nagios: -epn
+# anders@fupp.net
+# Alternative HTTP checker
+#
+# Aims:
+#
+# - show full URLs and any relevant error message, and text strings checked for
+# - log request and response, error output etc. to retrievable web page and
+# send the url along with the # alert, avoiding the need to simulate and
+# recreate errors
+#
+# Warning:
+#
+# - this code may not be the most advanced, but does the trick for me
+# - be careful with multiline searches, script runs slow when combined
+# with text searches of variable length (.* etc.). I use a fixed length
+# (for example I do exact match for number of spaces), which runs fast
+# enough
+#
+# 2012-11-23: First version.
+# 2013-02-04: Add support for SSL, authentication and sending a header.
+# Add command arguments to error page.
+
+use IO::Socket;
+use IO::Socket::SSL;
+use Getopt::Std;
+use Time::HiRes qw/ time /;
+use Text::Glob qw( match_glob );
+use Digest::MD5 qw(md5);
+use MIME::Base64;
+
+# configuration:
+# where to put error reports:
+my $datadir = "/usr/local/www/h";
+# url to serve them on:
+my $errorurl = "http://h.xy.no/";
+# end, configuration
+
+@args = @ARGV;
+getopts('i:h:u:c:w:r:s:mdt:p:H:a:S');
+my @CHARS = ('a'..'z', 'A'..'Z', '0'..'9');
+
+sub shorten_url {
+	my $url= shift;
+
+	my @output;
+
+	foreach my $int (unpack('N4', md5($url))) {
+
+		my $out;
+		for (my $j = 0; $j < 6; $j++) {
+			my $val = 0x0000003D & $int;
+			$out   .= $CHARS[$val];
+			$int    = $int >> 5;
+		}
+
+		push @output, $out;
+	}
+
+	return \@output;
+}
+
+sub usage {
+	print "Usage: check_http_alt [-i <IP/host>] [-h <virtualhost>] -u <url (path)>\n";
+	print "[-c <critical time>] [-w <warning time>] [-r <regexp search>]\n";
+	print "[-s <status code>] [-m (multi line)] [-t <timeout>][-p <port numer>]\n";
+	print "[-H <send http header] [-a <user:password> ] [-S (ssl)]\n";
+	exit(1);
+}
+if ($opt_u =~ /^https:\/\//) {
+	$opt_S = 1;
+	$proto = "https";
+} elsif ($opt_S) {
+	$proto = "https";
+} else {
+	$proto = "http";
+}
+
+if ($opt_u =~ /^(http|https):\/\//) {
+	# Remove protocol, assume http/https
+	$opt_u =~ s@^${1}:\/\/@@;
+
+	# Find hostname
+	$hosttmp = $opt_u;
+	$hosttmp =~ s@\/.*@@;
+	if ($hosttmp ne "") {
+		$opt_h = $hosttmp;
+	} else {
+		usage;
+	}
+	$opt_u =~ s@^$opt_h@@;
+	if ($opt_u eq "") {
+		$opt_u = "/";
+	}
+}
+if ((!$opt_i) && $opt_h) {
+	# Specify IP/host either in -i or -h
+	$opt_i = $opt_h;
+}
+
+usage unless ($opt_u);
+
+if (!$opt_s) {
+	$opt_s = "200";
+}
+if (!$opt_t) {
+	$opt_t = 10;
+}
+if ($opt_h) {
+	$hoststr = "Host: $opt_h\r\n";
+} else {
+	$hoststr = "";
+}
+if (!$opt_p) {
+	if ($opt_S) {
+		$opt_p = 443;
+	} else {
+		$opt_p = 80;
+	}
+}
+if ($opt_d) {
+	print "hoststr=$hoststr";
+}
+
+sub doexit {
+	my $ret = shift;
+	my $txt = shift;
+
+	my $shortref;
+	my $short;
+	my $shorturl;
+#	$txt .= sprintf(". Time spent: %.3fs, %d bytes.", $timespent, length($data));
+	$txt .= sprintf(". %.3fs, %d bytes.", $timespent, length($data));
+	if ($ret != 0) {
+		$shortref = shorten_url($opt_i . $opt_h . $opt_u . $start);
+		$short = $$shortref[0];
+		open(REPORT, ">$datadir/$short");
+		print REPORT "Request sent at " . localtime($start) . ":\n";
+		print REPORT "I (check_http_alt) was run with arguments: @args\n\n";
+		print REPORT $getstr;
+		print REPORT "Response:\n$data\n";
+		print REPORT "Plugin response: $txt";
+		close(REPORT);
+		$txt .= " $errorurl$short";
+	}
+	print "$txt\n";
+	exit($ret);
+}
+
+$start = time;
+if ($opt_S) {
+	$sock = new IO::Socket::SSL (
+			PeerAddr => $opt_i,
+			Proto => 'tcp',
+			PeerPort => $opt_p,
+			Timeout => $opt_t
+			);
+#	print "plong ssl inet.\n";
+} else {
+#	print "pling inet opt_i=$opt_i opt_p=$opt_p opt_t=$opt_t.\n";
+	$sock = new IO::Socket::INET (
+			PeerAddr => $opt_i,
+			Proto => 'tcp',
+			PeerPort => $opt_p,
+			Timeout => $opt_t
+			);
+}
+doexit(2,"Could not check URL $proto://$opt_h$opt_u on $opt_i, connection error.") unless ($sock);
+
+$getstr = "GET $opt_u HTTP/1.1\r\n" . $hoststr . "User-Agent: check_http/v1.4.15 (nagios-plugins 1.4.15)\r\n";
+if ($opt_H) {
+	$getstr .= "$opt_H\r\n";
+}
+if ($opt_a) {
+	$getstr .= "Authorization: Basic " . encode_base64($opt_a) . "\r\n";
+}
+$getstr .= "Connection: close\r\n\r\n";
+print $sock $getstr;
+$data = "";
+while (<$sock>) {
+	$data .= $_;
+}
+close($sock);
+$end = time;
+$timespent = $end-$start;
+
+$urltxt = "URL $proto://$opt_h$opt_u on $opt_i";
+$tspent = "Time spent: $timespent.";
+
+$httpcode = (split /\n/, $data)[0];
+$httpcode =~ s@^HTTP/[\d\.]+ (\d+).*@$1@g;
+
+if ($opt_c && $timespent > $opt_c) {
+#	doexit(2,"Slow response time checking $urltxt");
+	doexit(2,"Slow $urltxt");
+}
+if ($opt_w && $timespent > $opt_w) {
+#	doexit(1,"Slow response time checking $urltxt");
+	doexit(1,"Slow $urltxt");
+}
+#doexit(3, "Unknown status code from $urltxt") if ($httpcode eq "");
+doexit(3, "Unknown status code $urltxt") if ($httpcode eq "");
+#doexit(2,"Wrong status code from $urltxt, got $httpcode expected $opt_s") if ($httpcode !~ /^$opt_s$/);
+doexit(2,"Wrong status code $urltxt, got $httpcode expected $opt_s") if ($httpcode !~ /^$opt_s$/);
+
+if ($opt_r) {
+	if ($opt_m) {
+		if ($data =~ /$opt_r/s) {
+			doexit(0,"Looked for multi $opt_r in $urltxt, fine");
+		} else {
+			doexit(2,"Looked for $opt_r in $urltxt as multiline text did not find it");
+		}
+	} else {
+		if ($data =~ /$opt_r/) {
+			doexit(0,"Looked for $opt_r in $urltxt, fine");
+		} else {
+			doexit(2,"Looked for $opt_r in $urltxt did not find it");
+		}
+	}
+}
+
+doexit(0,"Checked $urltxt, fine (response code $httpcode)");
