@@ -1,7 +1,7 @@
 #! /usr/bin/perl
 # nagios: -epn
 # anders@fupp.net
-# Alternative HTTP checker
+# Alternative HTTP checker for Nagios (tired of check_http)
 #
 # Aims:
 #
