@@ -1,0 +1,83 @@
+#! /usr/bin/perl
+# nagios: -epn
+#
+# Logg in on html form, check content after login
+# anders@fupp.net, 2012-10-02
+
+use WWW::Mechanize::GZip;
+use Getopt::Std;
+
+getopts('l:f:g:u:p:r:x:y:d');
+
+sub usage {
+	print "check_http_formlogin_content -l <login url> -f <form id> [-g <get url>]\n";
+	print "-u <username> -p <password> -r <regexp response> [-x <username field]\n";
+	print "-y <password field>\n";
+	exit(3);
+}
+
+sub wexit {
+	my $text = shift;
+	print $text . "\n";
+	exit(1);
+}
+
+usage unless ($opt_l && $opt_f && $opt_u && $opt_p && $opt_r);
+if ($opt_x) {
+	$ufield = $opt_x;
+} else {
+	$ufield = "username";
+}
+if ($opt_y) {
+	$pfield = $opt_y;
+} else {
+	$pfield = "password";
+}
+$page = $opt_l;
+
+my $mech = WWW::Mechanize::GZip->new(
+	autocheck => 1
+);
+
+wexit("Could not fetch login URL $opt_l") unless ($mech->get($opt_l));
+if (!($form = $mech->form_id($opt_f))) {
+	wexit "Could not find form $opt_f in login URL $opt_l";
+}
+if (!($action = $form->action)) {
+	wexit "Could not find action for form $opt_f in login URL $opt_l";
+}
+
+if ($opt_d) { print "Posting to action URL $action.\n"; }
+if (!($response = $mech->post($action, [
+	"$ufield" => $opt_u,
+	"$pfield" => $opt_p,
+]))) {
+	wexit "Failed to post password to action URL $action";
+}
+if ($opt_d) {
+	print "Post got response code " . $response->code . "\n";
+	print "Content:\n" . $response->content;
+}
+
+if ($response->code =~ /^(301|302)$/ && undef($opt_g)) {
+	$opt_g = $response->header("Location");
+}
+
+if ($opt_g) {
+	if ($response = $mech->get($opt_g)) {
+		$page = $opt_g;
+	} else {
+		wexit "Failed to get get URL $opt_g after posting."
+	}
+
+}
+if ($response->code != 200) {
+	wexit "Got unexpected response code " . $response->code . " when loading get URL $opt_g."
+}
+
+if ($response->content =~ /$opt_r/) {
+	print "Page $page contains desired string $opt_r.\n";
+	exit(0);
+} else {
+	wexit "Page $page does not contain desired string $opt_r.";
+}
