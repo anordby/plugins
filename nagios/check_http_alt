@@ -21,6 +21,7 @@
 # 2012-11-23: First version.
 # 2013-02-04: Add support for SSL, authentication and sending a header.
 # Add command arguments to error page.
+# 2013-02-05: Change arguments to be somewhat check_http compatible
 
 use IO::Socket;
 use IO::Socket::SSL;
@@ -38,7 +39,7 @@ my $errorurl = "http://h.xy.no/";
 # end, configuration
 
 @args = @ARGV;
-getopts('i:h:u:c:w:r:s:mdt:p:H:a:S');
+getopts('I:k:u:c:w:r:s:mdt:p:H:a:S');
 my @CHARS = ('a'..'z', 'A'..'Z', '0'..'9');
 
 sub shorten_url {
@@ -62,10 +63,10 @@ sub shorten_url {
 }
 
 sub usage {
-	print "Usage: check_http_alt [-i <IP/host>] [-h <virtualhost>] -u <url (path)>\n";
+	print "Usage: check_http_alt [-I <IP/host>] [-H <virtualhost>] -u <url (path)>\n";
 	print "[-c <critical time>] [-w <warning time>] [-r <regexp search>]\n";
-	print "[-s <status code>] [-m (multi line)] [-t <timeout>][-p <port numer>]\n";
-	print "[-H <send http header] [-a <user:password> ] [-S (ssl)]\n";
+	print "[-s <status code>] [-m (multi line)] [-t <timeout>] [-p <port numer>]\n";
+	print "[-k <send http header] [-a <user:password> ] [-S (ssl)]\n";
 	exit(1);
 }
 if ($opt_u =~ /^https:\/\//) {
@@ -85,18 +86,18 @@ if ($opt_u =~ /^(http|https):\/\//) {
 	$hosttmp = $opt_u;
 	$hosttmp =~ s@\/.*@@;
 	if ($hosttmp ne "") {
-		$opt_h = $hosttmp;
+		$opt_H = $hosttmp;
 	} else {
 		usage;
 	}
-	$opt_u =~ s@^$opt_h@@;
+	$opt_u =~ s@^$opt_H@@;
 	if ($opt_u eq "") {
 		$opt_u = "/";
 	}
 }
-if ((!$opt_i) && $opt_h) {
-	# Specify IP/host either in -i or -h
-	$opt_i = $opt_h;
+if ((!$opt_I) && $opt_H) {
+	# Specify IP/host either in -I or -H
+	$opt_I = $opt_H;
 }
 
 usage unless ($opt_u);
@@ -107,8 +108,8 @@ if (!$opt_s) {
 if (!$opt_t) {
 	$opt_t = 10;
 }
-if ($opt_h) {
-	$hoststr = "Host: $opt_h\r\n";
+if ($opt_H) {
+	$hoststr = "Host: $opt_H\r\n";
 } else {
 	$hoststr = "";
 }
@@ -130,10 +131,9 @@ sub doexit {
 	my $shortref;
 	my $short;
 	my $shorturl;
-#	$txt .= sprintf(". Time spent: %.3fs, %d bytes.", $timespent, length($data));
 	$txt .= sprintf(". %.3fs, %d bytes.", $timespent, length($data));
 	if ($ret != 0) {
-		$shortref = shorten_url($opt_i . $opt_h . $opt_u . $start);
+		$shortref = shorten_url($opt_I . $opt_H . $opt_u . $start);
 		$short = $$shortref[0];
 		open(REPORT, ">$datadir/$short");
 		print REPORT "Request sent at " . localtime($start) . ":\n";
@@ -151,26 +151,24 @@ sub doexit {
 $start = time;
 if ($opt_S) {
 	$sock = new IO::Socket::SSL (
-			PeerAddr => $opt_i,
+			PeerAddr => $opt_I,
 			Proto => 'tcp',
 			PeerPort => $opt_p,
 			Timeout => $opt_t
 			);
-#	print "plong ssl inet.\n";
 } else {
-#	print "pling inet opt_i=$opt_i opt_p=$opt_p opt_t=$opt_t.\n";
 	$sock = new IO::Socket::INET (
-			PeerAddr => $opt_i,
+			PeerAddr => $opt_I,
 			Proto => 'tcp',
 			PeerPort => $opt_p,
 			Timeout => $opt_t
 			);
 }
-doexit(2,"Could not check URL $proto://$opt_h$opt_u on $opt_i, connection error.") unless ($sock);
+doexit(2,"Could not check URL $proto://$opt_H$opt_u on $opt_I, connection error.") unless ($sock);
 
 $getstr = "GET $opt_u HTTP/1.1\r\n" . $hoststr . "User-Agent: check_http/v1.4.15 (nagios-plugins 1.4.15)\r\n";
-if ($opt_H) {
-	$getstr .= "$opt_H\r\n";
+if ($opt_k) {
+	$getstr .= "$opt_k\r\n";
 }
 if ($opt_a) {
 	$getstr .= "Authorization: Basic " . encode_base64($opt_a) . "\r\n";
@@ -185,23 +183,19 @@ close($sock);
 $end = time;
 $timespent = $end-$start;
 
-$urltxt = "URL $proto://$opt_h$opt_u on $opt_i";
+$urltxt = "URL $proto://$opt_H$opt_u on $opt_I";
 $tspent = "Time spent: $timespent.";
 
 $httpcode = (split /\n/, $data)[0];
 $httpcode =~ s@^HTTP/[\d\.]+ (\d+).*@$1@g;
 
 if ($opt_c && $timespent > $opt_c) {
-#	doexit(2,"Slow response time checking $urltxt");
 	doexit(2,"Slow $urltxt");
 }
 if ($opt_w && $timespent > $opt_w) {
-#	doexit(1,"Slow response time checking $urltxt");
 	doexit(1,"Slow $urltxt");
 }
-#doexit(3, "Unknown status code from $urltxt") if ($httpcode eq "");
 doexit(3, "Unknown status code $urltxt") if ($httpcode eq "");
-#doexit(2,"Wrong status code from $urltxt, got $httpcode expected $opt_s") if ($httpcode !~ /^$opt_s$/);
 doexit(2,"Wrong status code $urltxt, got $httpcode expected $opt_s") if ($httpcode !~ /^$opt_s$/);
 
 if ($opt_r) {
