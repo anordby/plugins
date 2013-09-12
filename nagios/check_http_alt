@@ -22,6 +22,8 @@
 # 2013-02-04: Add support for SSL, authentication and sending a header.
 # Add command arguments to error page.
 # 2013-02-05: Change arguments to be somewhat check_http compatible
+# 2013-09-12: Actually time out, to give a better timeout message than what
+# Nagios gives.
 
 use IO::Socket;
 use IO::Socket::SSL;
@@ -69,6 +71,11 @@ sub usage {
 	print "[-k <send http header] [-a <user:password> ] [-S (ssl)]\n";
 	exit(1);
 }
+
+sub timeout {
+	doexit(2,"Could not check $urltxt, timeout after $opt_t seconds.");
+}
+
 if ($opt_u =~ /^https:\/\//) {
 	$opt_S = 1;
 	$proto = "https";
@@ -108,6 +115,8 @@ if (!$opt_s) {
 if (!$opt_t) {
 	$opt_t = 10;
 }
+$SIG{ALRM} = sub { timeout; };
+alarm($opt_t);
 if ($opt_H) {
 	$hoststr = "Host: $opt_H\r\n";
 } else {
@@ -131,6 +140,10 @@ sub doexit {
 	my $shortref;
 	my $short;
 	my $shorturl;
+	my $end;
+	my $timespent;
+	$end = time;
+	$timespent = $end-$start;
 	$txt .= sprintf(". %.3fs, %d bytes.", $timespent, length($data));
 	if ($ret != 0) {
 		$shortref = shorten_url($opt_I . $opt_H . $opt_u . $start);
@@ -148,6 +161,7 @@ sub doexit {
 	exit($ret);
 }
 
+$urltxt = "URL $proto://$opt_H$opt_u on $opt_I";
 $start = time;
 if ($opt_S) {
 	$sock = new IO::Socket::SSL (
@@ -164,7 +178,7 @@ if ($opt_S) {
 			Timeout => $opt_t
 			);
 }
-doexit(2,"Could not check URL $proto://$opt_H$opt_u on $opt_I, connection error.") unless ($sock);
+doexit(2,"Could not check $urltxt, connection error.") unless ($sock);
 
 $getstr = "GET $opt_u HTTP/1.1\r\n" . $hoststr . "User-Agent: check_http/v1.4.15 (nagios-plugins 1.4.15)\r\n";
 if ($opt_k) {
@@ -180,11 +194,6 @@ while (<$sock>) {
 	$data .= $_;
 }
 close($sock);
-$end = time;
-$timespent = $end-$start;
-
-$urltxt = "URL $proto://$opt_H$opt_u on $opt_I";
-$tspent = "Time spent: $timespent.";
 
 $httpcode = (split /\n/, $data)[0];
 $httpcode =~ s@^HTTP/[\d\.]+ (\d+).*@$1@g;
