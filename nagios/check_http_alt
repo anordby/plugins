@@ -24,6 +24,7 @@
 # 2013-02-05: Change arguments to be somewhat check_http compatible
 # 2013-09-12: Actually time out, to give a better timeout message than what
 # Nagios gives.
+# 2013-10-29: Add SSL SNI support.
 
 use IO::Socket;
 use IO::Socket::SSL;
@@ -119,8 +120,10 @@ $SIG{ALRM} = sub { timeout; };
 alarm($opt_t);
 if ($opt_H) {
 	$hoststr = "Host: $opt_H\r\n";
+	$sslhost = $opt_H;
 } else {
 	$hoststr = "";
+	$sslhost = $opt_I;
 }
 if (!$opt_p) {
 	if ($opt_S) {
@@ -166,6 +169,7 @@ $start = time;
 if ($opt_S) {
 	$sock = new IO::Socket::SSL (
 			PeerAddr => $opt_I,
+			SSL_hostname => $sslhost,
 			Proto => 'tcp',
 			PeerPort => $opt_p,
 			Timeout => $opt_t
