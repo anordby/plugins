@@ -25,6 +25,7 @@
 # 2013-09-12: Actually time out, to give a better timeout message than what
 # Nagios gives.
 # 2013-10-29: Add SSL SNI support.
+# 2014-01-08: Add support for chunked encoding.
 
 use IO::Socket;
 use IO::Socket::SSL;
@@ -155,7 +156,8 @@ sub doexit {
 		print REPORT "Request sent at " . localtime($start) . ":\n";
 		print REPORT "I (check_http_alt) was run with arguments: @args\n\n";
 		print REPORT $getstr;
-		print REPORT "Response:\n$data\n";
+		print REPORT "Response headers:\n$headers\n\n";
+		print REPORT "Response body:\n$data\n";
 		print REPORT "Plugin response: $txt";
 		close(REPORT);
 		$txt .= " $errorurl$short";
@@ -193,13 +195,31 @@ if ($opt_a) {
 }
 $getstr .= "Connection: close\r\n\r\n";
 print $sock $getstr;
+$headers = "";
 $data = "";
 while (<$sock>) {
-	$data .= $_;
+	last if (/^\s*$/);
+	$headers .= $_;
+}
+
+if ($headers=~ /^transfer-encoding:[ \t]*chunked\b/im) {
+	while ($chunksize= hex(<$sock>)) {
+		$left = $chunksize;
+		while ($left && ($got= read($sock, $buf, $left))) {
+			$data .= $buf;
+			$left -= $got;
+		}
+		doexit(2,"Could not read chunked response body.") unless defined ($got);
+		$_ = <$sock>;	# Clear \r\n
+	}
+} else {
+	while (<$sock>) {
+		$data .= $_;
+	}
 }
 close($sock);
 
-$httpcode = (split /\n/, $data)[0];
+$httpcode = (split /\n/, $headers)[0];
 $httpcode =~ s@^HTTP/[\d\.]+ (\d+).*@$1@g;
 
 if ($opt_c && $timespent > $opt_c) {
