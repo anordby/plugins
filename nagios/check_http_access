@@ -1,0 +1,75 @@
+#! /usr/bin/perl
+# Check if we can reach list of URLs
+# anders@fupp.net, 2014-01-30
+
+use Getopt::Std;
+use IO::Socket;
+getopts('u:t:');
+
+sub nexit {
+	my $ret = shift;
+	my $txt = shift;
+	print "$txt\n";
+	exit($ret);
+}
+
+nexit(3,"Use -u <list of space separated urls>") unless ($opt_u);
+
+if ($opt_t) {
+	$timeout = $opt_t;
+} else {
+	$timeout = 5;
+}
+$oktxt="";
+$crittxt="";
+
+foreach $url (split(/\s+/, $opt_u)) {
+	if ($url =~ /^(http|https):\/\/([\w\-\.]+)(:\d+)?/) {
+		$proto = $1;
+		$vhost = $2;
+		$port = $3;
+		$port =~ s@^\:@@g;
+
+		if ($proto eq "http") {
+			if ($port eq "") {
+				$port = 80;
+			}
+		} elsif ($proto eq "https") {
+			if ($port eq "") {
+				$port = 443;
+			}
+		} else {
+			nexit(3,"Unknown protocol $proto specified in url $url.");
+		}
+
+		# Test connection
+		$sock = new IO::Socket::INET (
+			PeerAddr => $vhost,
+			Proto => 'tcp',
+			PeerPort => $port,
+			Timeout => $timeout,
+			);
+		if (defined($sock)) {
+			close($sock);
+			$oktxt .= "$url ";
+		} else {
+			$crittxt .= "$url ($!) ";
+		}
+	} else {
+		nexit(3,"Unfamiliar URL $url specified.");
+	}
+}
+
+# Strip empty space at end
+$oktxt =~ s@\s+$@@;
+$crittxt =~ s@\s+$@@;
+
+if ($crittxt eq "") {
+	nexit(0, "All URLs OK: $oktxt");
+} else {
+	if ($oktxt eq "") {
+		nexit(2, "URLs failing: $crittxt");
+	} else {
+		nexit(2, "URLs failing: $crittxt| OK URLs: $oktxtAll");
+	}
+}
