@@ -3,6 +3,13 @@
 # Requests, cache hit ratio, bytes, time to first byte for cache miss
 # Anders Nordby <anders@fupp.net>, 2013-11-25
 
+# Symlink examples:
+# vcs_www.yourdomain.com_bytes
+# vcs_www.yourdomain.com_cachehitratio
+# vcs_www.yourdomain.com_requests
+# vcs_www.yourdomain.com_ttfbmiss
+# NB: requests must be used.
+
 # http://munin-monitoring.org/wiki/PercentGraphHowto
 # http://munin-monitoring.org/wiki/fieldname.type
 # escenic.. apweb1
@@ -101,6 +108,7 @@ if ($ARGV[0] && $ARGV[0] eq "autoconf") {
 	}
 	print "graph_category Varnish\n";
 } else {
+	# Only give values when using requests
 	if ($graph ne "requests") {
 		exit(0);
 	}
