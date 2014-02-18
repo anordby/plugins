@@ -1,0 +1,132 @@
+#! /usr/bin/perl
+# Graph per site and total statistics from Varnish Custom Statistics
+# Requests, cache hit ratio, bytes, time to first byte for cache miss
+# Anders Nordby <anders@fupp.net>, 2013-11-25
+
+# http://munin-monitoring.org/wiki/PercentGraphHowto
+# http://munin-monitoring.org/wiki/fieldname.type
+# escenic.. apweb1
+
+use LWP::Simple;
+use JSON;
+
+$staturl = "http://yourhost.domain.com:6555";
+
+my $name = $0;
+# Remove extra chars
+$name =~ s@^.*?([\w\.]+)$@\1@;
+# Remove base name for plugin
+$name =~ s@^vcs_@@;
+
+if ($name =~ /_(ttfbmiss|requests|cachehitratio|bytes)$/) {
+	$graph = $1;
+	$site = $name;
+	$site =~ s@_${graph}$@@;
+} else {
+	die("Must symlink to vcs_<site|TOTAL>_(ttfbmiss|requests|cachehitratio|bytes)");
+}
+
+$muninsiteref = $site;
+$muninsiteref =~ s@\.@_@g;
+
+#print "name: $name\n";
+#print "graph: $graph\n";
+#print "site: $site\n";
+
+if ($ARGV[0] && $ARGV[0] eq "autoconf") {
+	print "no\n";
+} elsif ($ARGV[0] && $ARGV[0] eq "config") {
+	if ($graph eq "requests") {
+		print "graph_title Requests per second ($site)\n";
+		print "graph_info Shows the number of requests for site $site.\n";
+		print "graph_vlabel req/s\n";
+		print "graph_args --base 1000 -l 0\n";
+		print "update yes\n";
+		print "requests.label requests\n";
+		print "requests.type GAUGE\n";
+		print "requests.min 0\n";
+		print "requests.graph yes\n";
+		print "misses.label misses\n";
+		print "misses.type GAUGE\n";
+		print "misses.min 0\n";
+		print "misses.graph no\n";
+		print "bytes.label bytes\n";
+		print "bytes.type GAUGE\n";
+		print "bytes.min 0\n";
+		print "bytes.graph no\n";
+		print "ttfbmiss.label ttfbmiss\n";
+		print "ttfbmiss.type GAUGE\n";
+		print "ttfbmiss.graph no\n";
+	} elsif ($graph eq "cachehitratio") {
+		print "graph_title Cache hit ratio ($site)\n";
+		print "graph_info Shows the percentage of requests cached for site $site.\n";
+		print "graph_vlabel percent\n";
+		print "graph_args --base 1000 -l 0 -u 100 -r\n";
+		print "graph_scale no\n";
+		print "update no\n";
+		print "graph_order misses=vcs_${muninsiteref}_requests.misses requests=vcs_${muninsiteref}_requests.requests\n";
+		print "misses.graph no\n";
+		print "misses.label misses\n";
+		print "requests.graph no\n";
+		print "requests.label requests\n";
+		print "missratio.cdef misses,requests,/,100,*\n";
+		print "missratio.label misses\n";
+		print "missratio.graph yes\n";
+		print "missratio.draw STACK\n";
+		print "hitratio.cdef 100,missratio,-\n";
+		print "hitratio.cdef requests,misses,-,requests,/,100,*\n";
+		print "hitratio.min 0\n";
+		print "hitratio.label hits\n";
+		print "hitratio.graph yes\n";
+		print "hitratio.draw AREA\n";
+	} elsif ($graph eq "bytes") {
+		print "graph_title Bytes transmitted ($site)\n";
+		print "graph_info Shows the number of bytes transmitted for site $site.\n";
+		print "graph_vlabel bytes/s\n";
+		print "update no\n";
+		print "graph_order bytes=vcs_${muninsiteref}_requests.bytes\n";
+		print "bytes.label bytes\n";
+		print "bytes.type GAUGE\n";
+		print "bytes.min 0\n";
+		print "bytes.graph yes\n";
+	} elsif ($graph eq "ttfbmiss") {
+		print "graph_title Time to first byte for cache miss ($site)\n";
+		print "graph_info Shows the average time to first byte for backend misses on site $site.\n";
+		print "graph_vlabel ms\n";
+		print "update no\n";
+		print "graph_order ttfbmiss=vcs_${muninsiteref}_requests.ttfbmiss\n";
+		print "ttfbmiss.label ttfb\n";
+		print "ttfbmiss.type GAUGE\n";
+		print "ttfbmiss.graph yes\n";
+	}
+	print "graph_category Varnish\n";
+} else {
+	if ($graph ne "requests") {
+		exit(0);
+	}
+
+	if ($site eq "TOTAL") {
+		$key = "TOTAL";
+	} else {
+		$key = "host:$site";
+	}
+	$json = get("${staturl}/key/${key}");
+
+	$statref = decode_json $json;
+	%stat = %$statref;
+	$arrayref = $stat{"$key"};
+	@array = @$arrayref;
+	# Fetch top hash element
+	$tophref = $array[0];
+	%toph = %$tophref;
+
+	$requests = $toph{"n_req"}/300;
+	$misses = $toph{"n_miss"}/300;
+	$bytes = $toph{"n_bodybytes"}/300;
+	$ttfbmiss = $toph{"ttfb_miss"};
+
+	print "requests.value $requests\n";
+	print "misses.value $misses\n";
+	print "bytes.value $bytes\n";
+	print "ttfbmiss.value $ttfbmiss\n";
+}

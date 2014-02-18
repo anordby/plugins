@@ -1,0 +1,77 @@
+#! /usr/bin/perl
+# nagios: -epn
+
+# Check Varnish Custom Statistics for number of misses
+# Alert if number of misses for one URL is particularly high
+
+# anders@fupp.net 2013-11-25
+
+use LWP::Simple;
+use JSON;
+use Getopt::Std;
+use Data::Dumper;
+
+getopts('w:c:u:');
+
+if ($opt_u) {
+	$missurl = $opt_u;
+} else {
+	die("Use -u <url>");
+}
+$misstxtj = get($missurl);
+$warntxt = "";
+$crittxt = "";
+%ignoreurls = (
+	"/foo/poll.jsp" => 1,
+	"bar.baz.com/thisaintcached/" => 1,
+);
+
+if (!$misstxtj) {
+	print "Could not fetch $missurl.\n";
+	exit(3);
+}
+if (!$opt_w && !$opt_c) {
+	print "Please use -w <warning level> or -c <critical level>\n";
+	exit(3);
+}
+$missurls = decode_json $misstxtj;
+%missurlhash = %$missurls;
+#print Dumper($missurls);
+$highest = 0;
+URL: foreach $key (keys %missurlhash) {
+#	print "key=$key\n";
+#	print "$key=" . $missurlhash{"$key"} . "\n";
+
+	$url = $key;
+	$url =~ s@^missbaseurl:@@;
+	foreach $iurl (keys %ignoreurls) {
+		next URL if ($url =~ /$iurl/);
+	}
+
+	if ($opt_c && $missurlhash{"$key"} > $opt_c) {
+		$crittxt .= "$url (" . $missurlhash{"$key"} . ") ";
+	} elsif ($opt_w && $missurlhash{"$key"} > $opt_w) {
+		$warntxt .= "$url (" . $missurlhash{"$key"} . ") ";
+	}
+
+	if ($missurlhash{"$key"} > $highest) {
+#		print "Found highest url $url.\n";
+		$highest = $missurlhash{"$key"};
+		$highesturl = $url;
+	}
+}
+
+$warntxt =~ s@\s+$@@;
+$crittxt =~ s@\s+$@@;
+
+if ($crittxt ne "") {
+	print "Top cache misses url(s) above critical level $opt_c: $crittxt |$warntxt\n";
+	exit(2);
+} elsif ($warntxt ne "") {
+	print "Top cache misses url(s) above warning level $opt_w: $warntxt\n";
+	exit(1);
+} else {
+	print "Top cache misses url $highesturl at $highest within boundaries.\n";
+	exit(0);
+}
+#print Dumper($missurlref);
