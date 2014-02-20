@@ -1,6 +1,7 @@
 #! /usr/bin/perl
 # Graph per site and total statistics from Varnish Custom Statistics
-# Requests, cache hit ratio, bytes, time to first byte for cache miss
+# Requests, cache hit ratio, bytes, time to first byte for cache miss and
+# status (response codes)
 # Anders Nordby <anders@fupp.net>, 2013-11-25
 
 # Symlink examples:
@@ -10,14 +11,20 @@
 # vcs_www.yourdomain.com_ttfbmiss
 # NB: requests must be used.
 
-# http://munin-monitoring.org/wiki/PercentGraphHowto
-# http://munin-monitoring.org/wiki/fieldname.type
-# escenic.. apweb1
+# Requirement: -b (bucket length) option for vstatd must be set to 300, or
+# the number of seconds between each Munin run.
+
+# Status codes must be logged like this:
+# std.log("vcs-key: status:" + req.http.host + " " + resp.status);
 
 use LWP::Simple;
 use JSON;
 
-$staturl = "http://yourhost.domain.com:6555";
+%staturls = (
+	'\.foo\.com$' => "http://xxhost.yourdomain.com:6555",
+	default => "http://yyhost.yourdomain.com:6555",
+);
+$muninrun = 300;
 
 my $name = $0;
 # Remove extra chars
@@ -25,12 +32,22 @@ $name =~ s@^.*?([\w\.]+)$@\1@;
 # Remove base name for plugin
 $name =~ s@^vcs_@@;
 
-if ($name =~ /_(ttfbmiss|requests|cachehitratio|bytes)$/) {
+if ($name =~ /_(ttfbmiss|requests|cachehitratio|bytes|status)$/) {
 	$graph = $1;
 	$site = $name;
 	$site =~ s@_${graph}$@@;
 } else {
 	die("Must symlink to vcs_<site|TOTAL>_(ttfbmiss|requests|cachehitratio|bytes)");
+}
+
+$staturl = undef;
+foreach $surlmatch (keys %staturls) {
+	if ($site =~ /${surlmatch}/) {
+		$staturl = $staturls{"$surlmatch"};
+	}
+}
+if (!(defined($staturl))) {
+	$staturl = $staturls{"default"};
 }
 
 $muninsiteref = $site;
@@ -39,6 +56,61 @@ $muninsiteref =~ s@\.@_@g;
 #print "name: $name\n";
 #print "graph: $graph\n";
 #print "site: $site\n";
+
+sub getstdvalues {
+	if ($site eq "TOTAL") {
+		$key = "TOTAL";
+	} else {
+		$key = "host:$site";
+	}
+	$json = get("${staturl}/key/${key}");
+
+	$statref = decode_json $json;
+	%stat = %$statref;
+	$arrayref = $stat{"$key"};
+	@array = @$arrayref;
+	# Fetch top hash element
+	$tophref = $array[0];
+	%toph = %$tophref;
+
+	$requests = $toph{"n_req"}/${muninrun};
+	$misses = $toph{"n_miss"}/${muninrun};
+	$bytes = $toph{"n_bodybytes"}/${muninrun};
+	$ttfbmiss = $toph{"ttfb_miss"};
+
+	print "requests.value $requests\n";
+	print "misses.value $misses\n";
+	print "bytes.value $bytes\n";
+	print "ttfbmiss.value $ttfbmiss\n";
+}
+
+sub getstatus {
+	$op = shift;
+	$json = get("${staturl}/match/%5Estatus:${site}");
+	$json =~ s@NaN@0@g;
+	$statref = decode_json $json;
+	%stat = %$statref;
+	foreach $key (keys %stat) {
+		if ($key =~ / (\d+)$/) {
+			$rcode = ${1};
+			$arrayref = $stat{"$key"};
+			@array = @$arrayref;
+			# Fetch top hash element
+			$tophref = $array[0];
+			%toph = %$tophref;
+			if ($op eq "values") {
+				print "$rcode.value " . $toph{"n_req"}/${muninrun} . "\n";
+			} else {
+				print "$rcode.label $rcode\n";
+				print "$rcode.type GAUGE\n";
+				print "$rcode.min 0\n";
+				print "$rcode.graph yes\n";
+
+			}
+		}
+	}
+
+}
 
 if ($ARGV[0] && $ARGV[0] eq "autoconf") {
 	print "no\n";
@@ -105,36 +177,21 @@ if ($ARGV[0] && $ARGV[0] eq "autoconf") {
 		print "ttfbmiss.label ttfb\n";
 		print "ttfbmiss.type GAUGE\n";
 		print "ttfbmiss.graph yes\n";
+	} elsif ($graph eq "status") {
+		print "graph_title Responses per second ($site)\n";
+		print "graph_info Shows the number of HTTP responses by status code for site $site.\n";
+		print "graph_vlabel req/s\n";
+		print "graph_args --base 1000 -l 0\n";
+		print "update yes\n";
+		getstatus("config");
 	}
 	print "graph_category Varnish\n";
 } else {
-	# Only give values when using requests
-	if ($graph ne "requests") {
+	if ($graph eq "requests") {
+		getstdvalues;
+	} elsif ($graph eq "status") {
+		getstatus("values");
+	} else {
 		exit(0);
 	}
-
-	if ($site eq "TOTAL") {
-		$key = "TOTAL";
-	} else {
-		$key = "host:$site";
-	}
-	$json = get("${staturl}/key/${key}");
-
-	$statref = decode_json $json;
-	%stat = %$statref;
-	$arrayref = $stat{"$key"};
-	@array = @$arrayref;
-	# Fetch top hash element
-	$tophref = $array[0];
-	%toph = %$tophref;
-
-	$requests = $toph{"n_req"}/300;
-	$misses = $toph{"n_miss"}/300;
-	$bytes = $toph{"n_bodybytes"}/300;
-	$ttfbmiss = $toph{"ttfb_miss"};
-
-	print "requests.value $requests\n";
-	print "misses.value $misses\n";
-	print "bytes.value $bytes\n";
-	print "ttfbmiss.value $ttfbmiss\n";
 }
