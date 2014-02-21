@@ -8,6 +8,7 @@
 # vcs_www.yourdomain.com_bytes
 # vcs_www.yourdomain.com_cachehitratio
 # vcs_www.yourdomain.com_requests
+# vcs_www.yourdomain.com_status
 # vcs_www.yourdomain.com_ttfbmiss
 # NB: requests must be used.
 
@@ -20,11 +21,16 @@
 use LWP::Simple;
 use JSON;
 
+# ===== Configuration =====
+# Where to pull Varnish Custom Statistics data from. If hostname matches key,
+# use it - if none matched use default.
 %staturls = (
 	'\.foo\.com$' => "http://xxhost.yourdomain.com:6555",
 	default => "http://yyhost.yourdomain.com:6555",
 );
+# This is how often you update munin graphs, in seconds:
 $muninrun = 300;
+# ===== End, configuration =====
 
 my $name = $0;
 # Remove extra chars
@@ -85,7 +91,9 @@ sub getstdvalues {
 }
 
 sub getstatus {
-	$op = shift;
+	my $op = shift;
+
+	my %codes = ();
 	$json = get("${staturl}/match/%5Estatus:${site}");
 	$json =~ s@NaN@0@g;
 	$statref = decode_json $json;
@@ -93,28 +101,37 @@ sub getstatus {
 	foreach $key (keys %stat) {
 		if ($key =~ / (\d+)$/) {
 			$rcode = ${1};
+			$codes{"$rcode"} = 1;
 			$arrayref = $stat{"$key"};
 			@array = @$arrayref;
 			# Fetch top hash element
 			$tophref = $array[0];
 			%toph = %$tophref;
 			if ($op eq "values") {
-				print "$rcode.value " . $toph{"n_req"}/${muninrun} . "\n";
+				print "r${rcode}.value " . $toph{"n_req"}/${muninrun} . "\n";
 			} else {
-				print "$rcode.label $rcode\n";
-				print "$rcode.type GAUGE\n";
-				print "$rcode.min 0\n";
-				print "$rcode.graph yes\n";
+				print "r${rcode}.label ${rcode}\n";
+				print "r${rcode}.type GAUGE\n";
+				print "r${rcode}.min 0\n";
+				print "r${rcode}.graph yes\n";
 
 			}
 		}
 	}
-
+	if ($op ne "values") {
+		# Print graph order
+		print "graph_order";
+		foreach $code (sort(keys %codes)) {
+			print " r${code}";
+		}
+		print "\n";
+	}
 }
 
 if ($ARGV[0] && $ARGV[0] eq "autoconf") {
 	print "no\n";
 } elsif ($ARGV[0] && $ARGV[0] eq "config") {
+	print "graph_category Varnish\n";
 	if ($graph eq "requests") {
 		print "graph_title Requests per second ($site)\n";
 		print "graph_info Shows the number of requests for site $site.\n";
@@ -185,7 +202,6 @@ if ($ARGV[0] && $ARGV[0] eq "autoconf") {
 		print "update yes\n";
 		getstatus("config");
 	}
-	print "graph_category Varnish\n";
 } else {
 	if ($graph eq "requests") {
 		getstdvalues;
