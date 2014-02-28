@@ -11,25 +11,41 @@
 # vcs_www.yourdomain.com_status
 # vcs_www.yourdomain.com_ttfbmiss
 # NB: requests must be used.
+# For totals write TOTAL.
 
 # Requirement: -b (bucket length) option for vstatd must be set to 300, or
 # the number of seconds between each Munin run.
 
-# Status codes must be logged like this:
+# Status codes and totals must be logged like this in vcl_deliver:
 # std.log("vcs-key: status:" + req.http.host + " " + resp.status);
+# std.log("vcs-key: TOTAL");
 
 use LWP::Simple;
 use JSON;
 
 # ===== Configuration =====
-# Where to pull Varnish Custom Statistics data from. If hostname matches key,
-# use it - if none matched use default.
+# Where to pull Varnish Custom Statistics data from. If hostname matches
+# hostmatch, use its vcsurl. Processed in order.
 %staturls = (
-	'\.foo\.com$' => "http://xxhost.yourdomain.com:6555",
-	default => "http://yyhost.yourdomain.com:6555",
+	1 => {
+		hostmatch => '\.api\.xxx\.com$',
+		vcsurl => "http://apicache1.xxx.com:6555",
+	},
+	2 => {
+		hostmatch => '(^|\.)(xxx|yyy)\.com$',
+		vcsurl => "http://vcs.yyy.com",
+	},
+	3 => {
+		hostmatch => '.*',
+		vcsurl => "http://cache1.zzz.com:6555",
+	},
 );
 # This is how often you update munin graphs, in seconds:
 $muninrun = 300;
+# Host names to skip from total statistics (status codes):
+%totalskiphosts = (
+	'cachepurge\.zzz\.com' => 1,
+);
 # ===== End, configuration =====
 
 my $name = $0;
@@ -47,13 +63,14 @@ if ($name =~ /_(ttfbmiss|requests|cachehitratio|bytes|status)$/) {
 }
 
 $staturl = undef;
-foreach $surlmatch (keys %staturls) {
-	if ($site =~ /${surlmatch}/) {
-		$staturl = $staturls{"$surlmatch"};
+foreach $statmatch (sort {$a<=>$b} keys %staturls) {
+	if ($site =~ /$staturls{"$statmatch"}{"hostmatch"}/) {
+		$staturl = $staturls{"$statmatch"}{"vcsurl"};
+		last;
 	}
 }
-if (!(defined($staturl))) {
-	$staturl = $staturls{"default"};
+unless (defined($staturl)) {
+	die("No VCS url for $site defined in hash staturls.");
 }
 
 $muninsiteref = $site;
@@ -94,37 +111,55 @@ sub getstatus {
 	my $op = shift;
 
 	my %codes = ();
-	$json = get("${staturl}/match/%5Estatus:${site}");
+	if ($site eq "TOTAL") {
+		$json = get("${staturl}/match/%5Estatus:");
+	} else {
+		$json = get("${staturl}/match/%5Estatus:${site}%20");
+	}
 	$json =~ s@NaN@0@g;
 	$statref = decode_json $json;
 	%stat = %$statref;
-	foreach $key (keys %stat) {
-		if ($key =~ / (\d+)$/) {
-			$rcode = ${1};
-			$codes{"$rcode"} = 1;
+	STATELEM: foreach $key (keys %stat) {
+		if ($key =~ /^(.*) (\d+)$/) {
+			$vhost = ${1};
+			$rcode = ${2};
+
+			if ($site eq "TOTAL") {
+				foreach $skiphost (keys %totalskiphosts) {
+					next STATELEM if ($vhost =~ /$skiphost/);
+				}
+			}
+
 			$arrayref = $stat{"$key"};
 			@array = @$arrayref;
 			# Fetch top hash element
 			$tophref = $array[0];
 			%toph = %$tophref;
-			if ($op eq "values") {
-				print "r${rcode}.value " . $toph{"n_req"}/${muninrun} . "\n";
+			$reqs = $toph{"n_req"};
+			if (defined($codes{"$rcode"})) {
+				$codes{"$rcode"} += $reqs;
 			} else {
-				print "r${rcode}.label ${rcode}\n";
-				print "r${rcode}.type GAUGE\n";
-				print "r${rcode}.min 0\n";
-				print "r${rcode}.graph yes\n";
-
+				$codes{"$rcode"} = $reqs;
 			}
 		}
 	}
-	if ($op ne "values") {
+	if ($op eq "values") {
+		foreach $code (sort(keys %codes)) {
+			print "r${code}.value " . $codes{"$code"}/${muninrun} . "\n";
+		}
+	} else {
 		# Print graph order
 		print "graph_order";
 		foreach $code (sort(keys %codes)) {
 			print " r${code}";
 		}
 		print "\n";
+		foreach $code (sort(keys %codes)) {
+			print "r${code}.label ${code}\n";
+			print "r${code}.type GAUGE\n";
+			print "r${code}.min 0\n";
+			print "r${code}.graph yes\n";
+		}
 	}
 }
 
