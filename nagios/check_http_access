@@ -56,7 +56,7 @@ foreach $url (split(/\s+/, $opt_u)) {
 		} else {
 			$failtext = $!;
 			$packed_ip = gethostbyname($vhost);
-			if (defined($packet_ip)) {
+			if (defined($packed_ip)) {
 				$ip = inet_ntoa($packed_ip);
 			} else {
 				$ip = "unresolvable ip";
