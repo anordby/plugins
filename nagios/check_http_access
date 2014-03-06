@@ -4,6 +4,7 @@
 
 use Getopt::Std;
 use IO::Socket;
+use Socket;
 getopts('u:t:');
 
 sub nexit {
@@ -53,7 +54,14 @@ foreach $url (split(/\s+/, $opt_u)) {
 			close($sock);
 			$oktxt .= "$url ";
 		} else {
-			$crittxt .= "$url ($!) ";
+			$failtext = $!;
+			$packed_ip = gethostbyname($vhost);
+			if (defined($packet_ip)) {
+				$ip = inet_ntoa($packed_ip);
+			} else {
+				$ip = "unresolvable ip";
+			}
+			$crittxt .= "$url ($failtext [$ip]) ";
 		}
 	} else {
 		nexit(3,"Unfamiliar URL $url specified.");
