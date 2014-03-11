@@ -29,6 +29,7 @@
 
 use IO::Socket;
 use IO::Socket::SSL;
+use Net::SSLeay;
 use Getopt::Std;
 use Time::HiRes qw/ time /;
 use Text::Glob qw( match_glob );
@@ -39,12 +40,18 @@ use MIME::Base64;
 # where to put error reports:
 my $datadir = "/usr/local/www/h";
 # url to serve them on:
-my $errorurl = "http://h.xy.no/";
+my $errorurl = "http://h.fupp.net/";
 # end, configuration
 
 @args = @ARGV;
-getopts('I:k:u:c:w:r:s:mdt:p:H:a:S');
+getopts('I:k:u:c:w:r:s:mdt:p:H:a:Sx');
 my @CHARS = ('a'..'z', 'A'..'Z', '0'..'9');
+$can_client_sni = Net::SSLeay::OPENSSL_VERSION_NUMBER() >= 0x01000000;
+if ($opt_x) {
+	$ssl_verify_mode = SSL_VERIFY_NONE;
+} else {
+	$ssl_verify_mode = SSL_VERIFY_PEER;
+}
 
 sub shorten_url {
 	my $url= shift;
@@ -70,7 +77,8 @@ sub usage {
 	print "Usage: check_http_alt [-I <IP/host>] [-H <virtualhost>] -u <url (path)>\n";
 	print "[-c <critical time>] [-w <warning time>] [-r <regexp search>]\n";
 	print "[-s <status code>] [-m (multi line)] [-t <timeout>] [-p <port numer>]\n";
-	print "[-k <send http header] [-a <user:password> ] [-S (ssl)]\n";
+	print "[-k <send http header] [-a <user:password>]\n";
+	print "[-S (ssl)] [-x (ignore peer SSL certificate)]\n";
 	exit(1);
 }
 
@@ -126,6 +134,9 @@ if ($opt_H) {
 	$hoststr = "";
 	$sslhost = $opt_I;
 }
+if (!($can_client_sni)) {
+	$sslhost = "";
+}
 if (!$opt_p) {
 	if ($opt_S) {
 		$opt_p = 443;
@@ -172,6 +183,7 @@ if ($opt_S) {
 	$sock = new IO::Socket::SSL (
 			PeerAddr => $opt_I,
 			SSL_hostname => $sslhost,
+			SSL_verify_mode => $ssl_verify_mode,
 			Proto => 'tcp',
 			PeerPort => $opt_p,
 			Timeout => $opt_t
@@ -184,7 +196,7 @@ if ($opt_S) {
 			Timeout => $opt_t
 			);
 }
-doexit(2,"Could not check $urltxt, connection error.") unless ($sock);
+doexit(2,"Could not check $urltxt, connection error: $SSL_ERROR") unless ($sock);
 
 $getstr = "GET $opt_u HTTP/1.1\r\n" . $hoststr . "User-Agent: check_http/v1.4.15 (nagios-plugins 1.4.15)\r\n";
 if ($opt_k) {
