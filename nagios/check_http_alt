@@ -35,6 +35,7 @@ use Time::HiRes qw/ time /;
 use Text::Glob qw( match_glob );
 use Digest::MD5 qw(md5);
 use MIME::Base64;
+use List::Util qw[min max];
 
 # configuration:
 # where to put error reports:
@@ -83,7 +84,19 @@ sub usage {
 }
 
 sub timeout {
-	doexit(2,"Could not check $urltxt, timeout after $opt_t seconds.");
+    my $ret;
+    my $rettxt;
+    my $timeout = shift;
+    if ($opt_c && ($timeout > $opt_c)) {
+            $ret = 2;
+            $rettxt = ", beyond critical timeout $opt_c";
+    } elsif ($opt_w && ($timeout > $opt_w)) {
+            $ret = 1;
+            $rettxt = ", beyond warning timeout $opt_w";
+    } else {
+            $ret = 1;
+    }
+	doexit($ret,"Could not check $urltxt, general timeout after $timeout seconds$rettxt");
 }
 
 if ($opt_u =~ /^https:\/\//) {
@@ -122,11 +135,23 @@ usage unless ($opt_u);
 if (!$opt_s) {
 	$opt_s = "200";
 }
-if (!$opt_t) {
-	$opt_t = 10;
+if ($opt_t && $opt_t =~ /^\d+$/) {
+	$timeout = $opt_t;
+} else {
+    if ($opt_w =~ /^\d+$/ && $opt_c =~ /^\d+$/) {
+        $timeout = max($opt_w, $opt_c)+1;
+    } elsif ($opt_w =~ /^\d+$/) {
+        $timeout = $opt_w+1;
+    } elsif ($opt_c =~ /^\d+$/) {
+        $timeout = $opt_c+1;
+    } else {
+        $timeout = 10;
+    }
 }
-$SIG{ALRM} = sub { timeout; };
-alarm($opt_t);
+$gentimeout = $timeout + 1;
+$SIG{ALRM} = sub { timeout($gentimeout); };
+alarm($gentimeout);
+
 if ($opt_H) {
 	$hoststr = "Host: $opt_H\r\n";
 	$sslhost = $opt_H;
@@ -168,7 +193,7 @@ sub doexit {
 		print REPORT "I (check_http_alt) was run with arguments: @args\n\n";
 		print REPORT $getstr;
 		print REPORT "Response headers:\n$headers\n\n";
-		print REPORT "Response body:\n$data\n";
+		print REPORT "Response body:\n$data\n\n";
 		print REPORT "Plugin response: $txt";
 		close(REPORT);
 		$txt .= " $errorurl$short";
@@ -186,17 +211,18 @@ if ($opt_S) {
 			SSL_verify_mode => $ssl_verify_mode,
 			Proto => 'tcp',
 			PeerPort => $opt_p,
-			Timeout => $opt_t
+			Timeout => $timeout
 			);
+	doexit(2,"Could not check $urltxt, connection error: $SSL_ERROR $@") unless ($sock);
 } else {
 	$sock = new IO::Socket::INET (
 			PeerAddr => $opt_I,
 			Proto => 'tcp',
 			PeerPort => $opt_p,
-			Timeout => $opt_t
+			Timeout => $timeout
 			);
+	doexit(2,"Could not check $urltxt, connection error: $@") unless ($sock);
 }
-doexit(2,"Could not check $urltxt, connection error: $SSL_ERROR") unless ($sock);
 
 $getstr = "GET $opt_u HTTP/1.1\r\n" . $hoststr . "User-Agent: check_http/v1.4.15 (nagios-plugins 1.4.15)\r\n";
 if ($opt_k) {
