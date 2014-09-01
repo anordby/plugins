@@ -41,7 +41,7 @@ use List::Util qw[min max];
 # where to put error reports:
 my $datadir = "/usr/local/www/h";
 # url to serve them on:
-my $errorurl = "http://h.fupp.net/";
+my $errorurl = "http://h.xy.no/";
 # end, configuration
 
 @args = @ARGV;
