@@ -45,13 +45,13 @@ my $errorurl = "http://h.xy.no/";
 # end, configuration
 
 @args = @ARGV;
-getopts('I:k:u:c:w:r:s:mdt:p:H:a:Sx');
+getopts('I:k:u:c:w:r:s:mdt:p:H:a:SxA:');
 my @CHARS = ('a'..'z', 'A'..'Z', '0'..'9');
 $can_client_sni = Net::SSLeay::OPENSSL_VERSION_NUMBER() >= 0x01000000;
 if ($opt_x) {
-	$ssl_verify_mode = SSL_VERIFY_NONE;
-} else {
 	$ssl_verify_mode = SSL_VERIFY_PEER;
+} else {
+	$ssl_verify_mode = SSL_VERIFY_NONE;
 }
 
 sub shorten_url {
@@ -79,7 +79,7 @@ sub usage {
 	print "[-c <critical time>] [-w <warning time>] [-r <regexp search>]\n";
 	print "[-s <status code>] [-m (multi line)] [-t <timeout>] [-p <port numer>]\n";
 	print "[-k <send http header] [-a <user:password>]\n";
-	print "[-S (ssl)] [-x (ignore peer SSL certificate)]\n";
+	print "[-S (ssl)] [-x (check peer SSL certificate)] [-A (alternative user agent)]\n";
 	exit(1);
 }
 
@@ -173,6 +173,12 @@ if ($opt_d) {
 	print "hoststr=$hoststr";
 }
 
+if ($opt_A) {
+    $useragent = $opt_A;
+} else {
+    $useragent = "check_http/v1.4.15 (nagios-plugins 1.4.15)";
+}
+
 sub doexit {
 	my $ret = shift;
 	my $txt = shift;
@@ -224,7 +230,7 @@ if ($opt_S) {
 	doexit(2,"Could not check $urltxt, connection error: $@") unless ($sock);
 }
 
-$getstr = "GET $opt_u HTTP/1.1\r\n" . $hoststr . "User-Agent: check_http/v1.4.15 (nagios-plugins 1.4.15)\r\n";
+$getstr = "GET $opt_u HTTP/1.1\r\n" . $hoststr . "User-Agent: $useragent\r\n";
 if ($opt_k) {
 	$getstr .= "$opt_k\r\n";
 }
