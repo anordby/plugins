@@ -22,7 +22,7 @@ use LWP::Simple;
 getopts('p:t:H:dw:c:I:C:');
 
 sub usage {
-        print "check_ssl_validity -H <cert hostname> [-I <IP/host>] [-p <port>]\n[-t <timeout>] [-w <expire warning (days)>] [-c <expire critical (dats)>]\n[-C (CRL update frequency in seconds)]\n";
+        print "check_ssl_validity -H <cert hostname> [-I <IP/host>] [-p <port>]\n[-t <timeout>] [-w <expire warning (days)>] [-c <expire critical (dats)>]\n[-C (<CRL update frequency (seconds)>]\n";
         print "\nWill look for hostname provided with -H in the certificate, but will contact\n";
         print "server with host/IP provided by -I (optional)\n";
         exit(1);
