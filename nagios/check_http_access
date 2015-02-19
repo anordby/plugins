@@ -1,5 +1,6 @@
 #! /usr/bin/perl
 # Check if we can reach list of URLs
+# Only checks for TCP connect to see if we are clear in the firewall.
 # anders@fupp.net, 2014-01-30
 
 use Getopt::Std;
