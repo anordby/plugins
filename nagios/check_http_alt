@@ -78,8 +78,8 @@ sub usage {
 	print "Usage: check_http_alt [-I <IP/host>] [-H <virtualhost>] -u <url (path)>\n";
 	print "[-c <critical time>] [-w <warning time>] [-r <regexp search>]\n";
 	print "[-s <status code>] [-m (multi line)] [-t <timeout>] [-p <port numer>]\n";
-	print "[-k <send http header] [-a <user:password>]\n";
-	print "[-S (ssl)] [-x (check peer SSL certificate)] [-A (alternative user agent)]\n";
+	print "[-k <send http header>] [-a <user:password>]\n";
+	print "[-S (ssl)] [-x (check peer SSL certificate)] [-A <alternative user agent>]\n";
 	exit(1);
 }
 
