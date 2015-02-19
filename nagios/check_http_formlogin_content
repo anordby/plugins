@@ -13,7 +13,7 @@ getopts('l:f:g:u:p:r:x:y:dc:ka:');
 
 sub usage {
 	print "check_http_formlogin_content -l <login url> -f <form id> [-g <get url>]\n";
-	print "-u <username> -p <password> -r <regexp response> [-x <username field]\n";
+	print "-u <username> -p <password> -r <regexp response> [-x <username field>]\n";
 	print "-y <password field> [-c <link class to follow to find form>] [-k (keep hidden inputs)]\n";
 	print "[-a <form action url>]\n";
 	exit(3);
