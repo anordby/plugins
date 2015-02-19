@@ -66,6 +66,13 @@ foreach $line (`sudo ethtool $if 2>&1`) {
 	}
 }
 
+if ($? != 0) {
+	$ethlines =~ s@\n@ @g;
+	$ethlines =~ s@\s{2,}@ @g;
+	print "Ethtool exited with error: $ethlines\n";
+	exit(2);
+}
+
 if ($opt_s) {
 	$speed = $opt_s;
 } else {
