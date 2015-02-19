@@ -27,10 +27,16 @@ if ($< == 0) {
 	$cmd = "sudo ";
 }
 
-if ($sysname eq "Linux" && $release =~ /^3.2/) {
-	$cmd .= "uname26 /usr/sbin/hpacucli";
+if (-f "/usr/sbin/hpacucli") {
+	$arcmd = "/usr/sbin/hpacucli";
 } else {
-	$cmd .= "/usr/sbin/hpacucli";
+	$arcmd = "/usr/sbin/hpssacli";
+}
+
+if ($sysname eq "Linux" && $release =~ /^3.2/) {
+	$cmd .= "uname26 $arcmd";
+} else {
+	$cmd .= "$arcmd";
 }
 
 sub myerror {
