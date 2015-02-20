@@ -19,10 +19,10 @@ use POSIX qw(strftime);
 use Digest::MD5 qw(md5_hex);
 use LWP::Simple;
 
-getopts('p:t:H:dw:c:I:C:');
+getopts('p:t:H:dw:c:I:C:d');
 
 sub usage {
-        print "check_ssl_validity -H <cert hostname> [-I <IP/host>] [-p <port>]\n[-t <timeout>] [-w <expire warning (days)>] [-c <expire critical (dats)>]\n[-C (<CRL update frequency (seconds)>]\n";
+        print "check_ssl_validity -H <cert hostname> [-I <IP/host>] [-p <port>]\n[-t <timeout>] [-w <expire warning (days)>] [-c <expire critical (dats)>]\n[-C (CRL update frequency in seconds)] [-d (debug)]\n";
         print "\nWill look for hostname provided with -H in the certificate, but will contact\n";
         print "server with host/IP provided by -I (optional)\n";
         exit(1);
@@ -52,7 +52,7 @@ sub ckserial {
         if ($crrev ne "") {
             $crrevtime = str2time($crrev);
             $revtime = $crrevtime-$uxtime;
-            print "revtime: $revtime\n";
+#            print "revtime: $revtime\n";
             if ($revtime < 0) {
                 doexit(2, "Found certificate for $vhost on CRL $crldp revoked already at date $crrev");
             } elsif (($revtime/86400) < $crit) {
@@ -192,23 +192,30 @@ if ($certdays < $crit) {
 }
 
 $serial = lc(sprintf("%x", $decoded->serial));
-#print "Serial: $serial\n";
+if ($opt_d) {
+    print "Certificate serial: $serial\n";
+}
 @crldps = @{$decoded->CRLDistributionPoints};
 $crlskip = 0;
 foreach $crldp (@crldps) {
+    if ($opt_d) {
+        print "Checking CRL DP $crldp.\n";
+    }
     $cachefile = "/tmp/" . md5_hex($crldp) . "_crl.tmp";
     if (-f $cachefile) {
         $cacheage = $uxtime-(stat($cachefile))[9];
         if ($cacheage > $crlupdatefreq) {
-            print "Update CRL DP cachefile for $crldp, more than a day old.\n";
+            if ($opt_d) { print "Download update, more than a day old.\n"; }
             updatecrl($crldp, $cachefile);
-#        } else {
+        } else {
+            if ($opt_d) { print "Reusing cached copy of it.\n"; }
 #            print "Reuse CRL DP cachefile for $crldp, less than a day old.\n";
 #            No need to check CRL, it has already been so? Well we could have many certs to check.
 #            $crlskip = 1;
 #            next;
         }
     } else {
+        if ($opt_d) { print "Download initial copy.\n"; }
         updatecrl($crldp, $cachefile);
     }
 #    print "Check CRL DP $crldp $cachefile\n";
@@ -233,13 +240,15 @@ foreach $crldp (@crldps) {
             $nextup = $1;
             $nextuptime = str2time($nextup);
             $crlvalid = $nextuptime-$uxtime;
+            if ($opt_d) { print "Next CRL update: $nextup\n"; }
 #            print "crlvalid: $crlvalid\n";
             if ($crlvalid < 0) {
                 doexit(2, "Could not use CRL from $crldp, it expired past next update on $nextup");
             }
 #            print "nextuptime $nextuptime nextup $nextup X\n";
-#        } elsif ($cline =~ /.*Last Update: (.+)/) {
-#            $lastup = $1;
+        } elsif ($cline =~ /.*Last Update: (.+)/) {
+            $lastup = $1;
+            if ($opt_d) { print "Last CRL update: $lastup\n"; }
 #            $lastuptime = str2time($lastup);
 #            print "lastuptime $lastuptime lastup $lastup X\n";
         } elsif ($mode == 0) {
