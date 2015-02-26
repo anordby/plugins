@@ -161,8 +161,17 @@ if ($decoded->error) {
 
 $oktxt = "";
 if ($vhost eq $decoded->subject_cn) {
-    $oktxt .= "Host $vhost matches CN $vhost on $hosttxt ";
-} else {
+	$oktxt .= "Host $vhost matches CN $vhost on $hosttxt ";
+} elsif ($decoded->subject_cn =~ /^*\.(.*)$/) {
+	$wcdomain = $1;
+	$domain = $vhost;
+	$domain =~ s@^[\w\-]+\.@@;
+	if ($domain eq $wcdomain) {
+		$oktxt .= "Host $vhost matches wildcard CN " . $decoded->subject_cn . " on $hosttxt ";
+	}
+}
+
+if ($oktxt eq "") {
     $altfound = 0;
     foreach $altname (@{$decoded->SubjectAltName}) {
         if ($altname =~ /^dNSName=(.*)/) {
