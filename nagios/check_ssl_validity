@@ -197,7 +197,7 @@ $certdaysfmt = sprintf("%.1f", $certdays);
 if ($certdays < $crit) {
     doexit(2, "${oktxt}but it is expiring in only $certdaysfmt days, critical limit is $crit.");
 } elsif ($certdays < $warn) {
-    doexit(2, "${oktxt}but it is expiring in only $certdaysfmt days, warning limit is $warn.");
+    doexit(1, "${oktxt}but it is expiring in only $certdaysfmt days, warning limit is $warn.");
 }
 
 $serial = lc(sprintf("%x", $decoded->serial));
