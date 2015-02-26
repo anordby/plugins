@@ -89,11 +89,10 @@ if ($opt_C) {
 $vhost = $opt_H;
 if ($opt_I) {
     $host = $opt_I;
-    $hosttxt = "$host:$port ($vhost)";
 } else {
     $host = $vhost;
-    $hosttxt = "$host:$port";
 }
+$hosttxt = "$host:$port";
 
 if ($opt_w && $opt_w =~ /^\d+$/) {
     $warn = $opt_w;
