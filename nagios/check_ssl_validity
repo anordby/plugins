@@ -159,7 +159,8 @@ if ($decoded->error) {
 }
 
 $oktxt = "";
-if ($opt_d) { print "Found CN: $decoded->subject_cn\n"; }
+$cn = $decoded->subject_cn;
+if ($opt_d) { print "Found CN: $cn\n"; }
 if ($vhost eq $decoded->subject_cn) {
 	$oktxt .= "Host $vhost matches CN $vhost on $hosttxt ";
 } elsif ($decoded->subject_cn =~ /^*\.(.*)$/) {
@@ -208,7 +209,8 @@ if ($certdays < $crit) {
     doexit(1, "${oktxt}but it is expiring in only $certdaysfmt days, warning limit is $warn.");
 }
 
-$serial = lc(sprintf("%x", $decoded->serial));
+$serial = $decoded->serial;
+$serial = lc(sprintf("%x", $serial));
 if ($opt_d) {
     print "Certificate serial: $serial\n";
 }
@@ -289,7 +291,7 @@ if (-f $tempfile) {
 $oktxt =~ s@\s+$@@;
 print "$oktxt, still valid for $certdaysfmt days. ";
 if ($crlskip == 0) {
-    print "Not found on any Certificate Revokation Lists.\n";
+    print "Serial $serial not found on any Certificate Revokation Lists.\n";
 } else {
     print "CRL checks skipped, next check in " . ($crlupdatefreq - $cacheage) . " seconds.\n";
 }
