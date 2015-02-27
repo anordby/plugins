@@ -159,6 +159,7 @@ if ($decoded->error) {
 }
 
 $oktxt = "";
+if ($opt_d) { print "Found CN: $decoded->subject_cn\n"; }
 if ($vhost eq $decoded->subject_cn) {
 	$oktxt .= "Host $vhost matches CN $vhost on $hosttxt ";
 } elsif ($decoded->subject_cn =~ /^*\.(.*)$/) {
@@ -171,18 +172,26 @@ if ($vhost eq $decoded->subject_cn) {
 }
 
 if ($oktxt eq "") {
-    $altfound = 0;
-    foreach $altname (@{$decoded->SubjectAltName}) {
-        if ($altname =~ /^dNSName=(.*)/) {
-            if ($vhost eq $1) {
-                $altfound = 1;
-                $oktxt .= "Host $vhost found in SAN on $hosttxt ";
-                last;
+    # Cert not yet found
+    if (defined$decoded->SubjectAltName) {
+        # Check altnames
+        $altfound = 0;
+        foreach $altnametxt (@{$decoded->SubjectAltName}) {
+            if ($altnametxt =~ /^dNSName=(.*)/) {
+                $altname = $1;
+                if ($opt_d) { print "Found SAN: $altname\n"; }
+                if ($vhost eq $altname) {
+                    $altfound = 1;
+                    $oktxt .= "Host $vhost found in SAN on $hosttxt ";
+                    last;
+                }
             }
         }
-    }
-    if ($altfound == 0) {
-        doexit(2, "Host $vhost not found in certificate on $hosttxt, not in CN or in alternative names");
+        if ($altfound == 0) {
+            doexit(2, "Host $vhost not found in certificate on $hosttxt, not in CN or in alternative names");
+        }
+    } else {
+        doexit(2, "Host $vhost not found in certificate on $hosttxt, not in CN and no alternative names found");
     }
 }
 
