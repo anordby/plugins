@@ -173,7 +173,7 @@ if ($vhost eq $decoded->subject_cn) {
 
 if ($oktxt eq "") {
     # Cert not yet found
-    if (defined$decoded->SubjectAltName) {
+    if (defined($decoded->SubjectAltName)) {
         # Check altnames
         $altfound = 0;
         foreach $altnametxt (@{$decoded->SubjectAltName}) {
