@@ -12,7 +12,7 @@ use Sys::Hostname;
 # libnet-smtp-ssl-perl
 # libmail-pop3client-perl
 
-getopts('s:3:i:u:p:l:f:r:w:c:dSXA');
+getopts('s:3:i:u:p:l:f:r:w:c:dSXAt:');
 use vars qw { $opt_s $opt_3 $opt_i $opt_u $opt_p $opt_f $opt_r $opt_l $opt_c $opt_w $opt_d $opt_S $opt_X $debug $smtp_port $smtp $opt_A $opt_t $timeout };
 if ($opt_3) {
 	use Mail::POP3Client;
