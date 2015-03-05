@@ -231,8 +231,6 @@ sub ckimap {
 		Uid		=> 1,
 		Debug		=> $debug,
 	) or critical("Could not connect to IMAP server on $opt_i (SSL: $ssl_txt): $@");
-	my $folders = $imap->folders;
-	print "Folders: @$folders\n";
 	$imap->select("INBOX") or critical("Could not select INBOX while fetching IMAP mail: $@");
 	my @msgs = $imap->search(@search) or critical("Could not get messages list: $@");
 	foreach $msg (@msgs) {
