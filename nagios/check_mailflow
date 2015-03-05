@@ -7,7 +7,12 @@ use Getopt::Std;
 use strict;
 use Sys::Hostname;
 
-getopts('s:3:i:u:p:l:f:r:w:c:dSX');
+# Debian packages needed:
+# libnet-smtp-ssl-perl
+# libmail-pop3client-perl
+
+getopts('s:3:i:u:p:l:f:r:w:c:dSXA');
+use vars qw { $opt_s $opt_3 $opt_i $opt_u $opt_p $opt_f $opt_r $opt_l $opt_c $opt_w $opt_d $opt_S $opt_X $debug $smtp_port $smtp $opt_A };
 if ($opt_3) {
 	use Mail::POP3Client;
 }
@@ -47,7 +52,6 @@ if ($opt_S) {
 
 $NagiosMailflow::magicstart = "%%NAGIOSMAILFLOW: ";
 $NagiosMailflow::subject = "Nagios mailflow check";
-use vars qw { $opt_s $opt_3 $opt_i $opt_u $opt_p $opt_f $opt_r $opt_l $opt_c $opt_w $opt_d $opt_S $opt_X $debug $smtp_port };
 
 sub critical {
 	print "CRITICAL: $_[0]\n";
@@ -71,10 +75,11 @@ sub usage {
 	print "-i <imap server> -h <hostname> (pop3/imap server) -s <smtp server>\n";
 	print "[-l <local hostname> (for helo)] [-d (debug)] -w <warning (seconds)>\n";
 	print "-c <critical (seconds)> -S (use SSL for SMTP) -X (use SSL for POP/IMAP)\n";
+	print "-A (perform SMTP authenticate)\n";
 	exit(3);
 }
 
-usage unless ($opt_r && $opt_f && ($opt_3 || $opt_i) && $opt_s && ($opt_w || $opt_c));
+usage unless ($opt_r && $opt_f && ($opt_3 || $opt_i) && $opt_s && ($opt_w || $opt_c) && $opt_u && $opt_p);
 
 if ($opt_d) {
 	$debug = 1;
@@ -111,35 +116,44 @@ if ($opt_s =~ /^([\s\w\.-_]+)$/) {
 unknown("Critical waiting time must be longer than warning") if ((($opt_c) && ($opt_w)) && ($opt_w >= $opt_c));
 
 sub sender {
-	my $text = "$_[0]";
+	my $text = shift;
+	my $hello = $Sys::Hostname::host;
+	my $smtp;
+	if ($opt_d) {
+		print "Attempt SMTP to host $opt_s on port $smtp_port, helo $hello\n";
+	}
 	if ($opt_S) {
-		my $smtp = Net::SMTP->new(
-				Host => $opt_s,
-				Hello => $Sys::Hostname::host,
-				Timeout => 10,
-				Debug => $debug,
-				Port => $smtp_port,
-			);
+		$smtp = Net::SMTP::SSL->new(
+			Host => $opt_s,
+			Hello => $hello,
+			Timeout => 10,
+			Debug => $debug,
+			Port => $smtp_port,
+		);
 	} else {
-		my $smtp = Net::SMTP::SSL->new(
-				Host => $opt_s,
-				Hello => $Sys::Hostname::host,
-				Timeout => 10,
-				Debug => $debug,
-				Port => $smtp_port,
-			);
+		$smtp = Net::SMTP->new(
+			Host => $opt_s,
+			Hello => $hello,
+			Timeout => 10,
+			Debug => $debug,
+			Port => $smtp_port,
+		);
 	}
 
-	unless defined($smtp) {
-		critical("Could not connect to SMTP server $opt_s.");
+	unless (defined($smtp)) {
+		critical("Could not connect to SMTP server $opt_s on port $smtp_port: $@");
+	}
+
+	if ($opt_A) {
+		$smtp->auth($opt_u, $opt_p) or critical("Could not authenticate with SMTP: " . $smtp->code(), " ", $smtp->message);
 	}
 
 	$smtp->mail($opt_f);
 	$smtp->recipient($opt_r);
 	$smtp->data;
-	$smtp->datasend("From: $opt_f");
-	$smtp->datasend("To: $opt_r");
-	$smtp->datasend("Subject: $NagiosMailflow::subject");
+	$smtp->datasend("From: $opt_f\n");
+	$smtp->datasend("To: $opt_r\n");
+	$smtp->datasend("Subject: " . $NagiosMailflow::subject . "\n");
 	$smtp->datasend("\n");
 	$smtp->datasend($text);
 	$smtp->dataend;
