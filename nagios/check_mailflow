@@ -133,7 +133,7 @@ sub sender {
 		$smtp = Net::SMTP::SSL->new(
 			Host => $opt_s,
 			Hello => $hello,
-			Timeout => 10,
+			Timeout => $timeout,
 			Debug => $debug,
 			Port => $smtp_port,
 		);
@@ -141,7 +141,7 @@ sub sender {
 		$smtp = Net::SMTP->new(
 			Host => $opt_s,
 			Hello => $hello,
-			Timeout => 10,
+			Timeout => $timeout,
 			Debug => $debug,
 			Port => $smtp_port,
 		);
@@ -194,7 +194,7 @@ sub ckpop {
 					HOST     => $opt_3,
 					DEBUG    => 1,
 					USESSL   => $ssl_pop,
-					TIMEOUT  => 10,
+					TIMEOUT  => $timeout,
 					);
 	if ($pop->Count() == -1) {
 		critical("Could not connect to pop3 server on $opt_3 (SSL: $ssl_txt): $!");
@@ -227,7 +227,7 @@ sub ckimap {
 		User		=> $opt_u,
 		Password	=> $opt_p,
 		Ssl		=> $ssl_imap,
-		Timeout		=> 10,
+		Timeout		=> $timeout,
 		Uid		=> 1,
 		Debug		=> $debug,
 	) or critical("Could not connect to IMAP server on $opt_i (SSL: $ssl_txt): $@");
