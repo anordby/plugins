@@ -26,6 +26,8 @@
 # Nagios gives.
 # 2013-10-29: Add SSL SNI support.
 # 2014-01-08: Add support for chunked encoding.
+# 2015-03-10: Add pre-check support, to check if server is supposed to be
+# healthy.
 
 use IO::Socket;
 use IO::Socket::SSL;
@@ -36,6 +38,8 @@ use Text::Glob qw( match_glob );
 use Digest::MD5 qw(md5);
 use MIME::Base64;
 use List::Util qw[min max];
+use LWP::UserAgent;
+use HTTP::Status qw(is_server_error);
 
 # configuration:
 # where to put error reports:
@@ -44,8 +48,11 @@ my $datadir = "/usr/local/www/h";
 my $errorurl = "http://h.xy.no/";
 # end, configuration
 
+my $ua = LWP::UserAgent->new;
+$ua->timeout(3);
+
 @args = @ARGV;
-getopts('I:k:u:c:w:r:s:mdt:p:H:a:SxA:');
+getopts('I:k:u:c:w:r:s:mdt:p:H:a:SxA:P:');
 my @CHARS = ('a'..'z', 'A'..'Z', '0'..'9');
 $can_client_sni = Net::SSLeay::OPENSSL_VERSION_NUMBER() >= 0x01000000;
 if ($opt_x) {
@@ -78,8 +85,9 @@ sub usage {
 	print "Usage: check_http_alt [-I <IP/host>] [-H <virtualhost>] -u <url (path)>\n";
 	print "[-c <critical time>] [-w <warning time>] [-r <regexp search>]\n";
 	print "[-s <status code>] [-m (multi line)] [-t <timeout>] [-p <port numer>]\n";
-	print "[-k <send http header>] [-a <user:password>]\n";
-	print "[-S (ssl)] [-x (check peer SSL certificate)] [-A <alternative user agent>]\n";
+	print "[-k <send http header] [-a <user:password>]\n";
+	print "[-S (ssl)] [-x (check peer SSL certificate)] [-A (alternative user agent)]\n";
+    print "[-P <pre-check URL> (return OK if this does not return 200 OK)]\n";
 	exit(1);
 }
 
@@ -148,6 +156,16 @@ if ($opt_t && $opt_t =~ /^\d+$/) {
         $timeout = 10;
     }
 }
+
+if ($opt_P) {
+    my $response = $ua->get($opt_P);
+    my $rc = $response->code;
+    if ($rc ne "200" && (!is_server_error($rc))) {
+        print "Ignoring check of $proto://$opt_H$opt_u on $opt_I, pre-check of $opt_P indicates we should as it does not return 200 OK and is not a server error.\n";
+        exit(0);
+    }
+}
+
 $gentimeout = $timeout + 1;
 $SIG{ALRM} = sub { timeout($gentimeout); };
 alarm($gentimeout);
