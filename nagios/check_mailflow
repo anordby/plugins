@@ -7,6 +7,7 @@ package NagiosMailflow;
 use Getopt::Std;
 use strict;
 use Sys::Hostname;
+use POSIX;
 
 # Debian packages needed:
 # libnet-smtp-ssl-perl
@@ -159,8 +160,9 @@ sub sender {
 	$smtp->mail($opt_f);
 	$smtp->recipient($opt_r);
 	$smtp->data;
-	$smtp->datasend("From: $opt_f\n");
 	$smtp->datasend("To: $opt_r\n");
+	$smtp->datasend("From: $opt_f\n");
+	$smtp->datasend("Date: " . strftime("%a, %d %b %Y %H:%M:%S %z", localtime(time)) . "\n");
 	$smtp->datasend("Subject: " . $NagiosMailflow::subject . "\n");
 	$smtp->datasend("\n");
 	$smtp->datasend($text);
@@ -289,7 +291,7 @@ if ($opt_w) {
 
 if ($opt_c) {
 	sleep($opt_c-$opt_w);
-	if(ckpop) {
+	if(ckmail) {
 		if ($opt_3) {
 			if ($opt_w) {
 				warning("Found test mail on $opt_3 (POP3 server), after $opt_c seconds wait time");
