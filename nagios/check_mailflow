@@ -1,14 +1,35 @@
 #! /usr/bin/perl -T
+# nagios: -epn
 # Check mailflow plugin for Nagios
 # 2006-03-28, anders@bsdconsulting.no
 
 package NagiosMailflow;
 use Getopt::Std;
-use Mail::Sendmail;
 use strict;
 use Sys::Hostname;
-use Mail::POP3Client;
-getopts('s:3:i:u:p:l:f:r:w:c:d');
+
+# Debian packages needed:
+# libnet-smtp-ssl-perl
+# libmail-pop3client-perl
+
+getopts('s:3:i:u:p:l:f:r:w:c:dSXAt:');
+use vars qw { $opt_s $opt_3 $opt_i $opt_u $opt_p $opt_f $opt_r $opt_l $opt_c $opt_w $opt_d $opt_S $opt_X $debug $smtp_port $smtp $opt_A $opt_t $timeout };
+if ($opt_3) {
+	use Mail::POP3Client;
+}
+if ($opt_i) {
+	use Mail::IMAPClient;
+}
+if ($opt_S) {
+	use Net::SMTP::SSL;
+} else {
+	use Net::SMTP;
+}
+if ($opt_t) {
+	$timeout = $opt_t;
+} else {
+	$timeout = 10;
+}
 
 # -s <smtp server> (mandatory)
 # -3 <pop server>
@@ -37,7 +58,6 @@ getopts('s:3:i:u:p:l:f:r:w:c:d');
 
 $NagiosMailflow::magicstart = "%%NAGIOSMAILFLOW: ";
 $NagiosMailflow::subject = "Nagios mailflow check";
-use vars qw { $opt_s $opt_3 $opt_i $opt_u $opt_p $opt_f $opt_r $opt_l $opt_c $opt_w $opt_d };
 
 sub critical {
 	print "CRITICAL: $_[0]\n";
@@ -56,9 +76,30 @@ sub ok {
 	exit(0);
 }
 
-unknown("Use -r <recipient>") unless ($opt_r);
-unknown("Use -f <from address>") unless ($opt_f);
-unknown("Use -3 <pop server> or -i <imap server>") unless (($opt_3) || ($opt_i));
+sub usage {
+	print "check_mailflow -r <recipient> -f <from address> -3 <pop3 server>\n";
+	print "-i <imap server> -h <hostname> (pop3/imap server) -s <smtp server>\n";
+	print "[-l <local hostname> (for helo)] [-d (debug)] -w <warning (seconds)>\n";
+	print "-c <critical (seconds)> [-S (use SSL for SMTP)] [-X (use SSL for POP/IMAP)]\n";
+	print "[-A (perform SMTP authenticate)] [-t (timeout)]\n";
+	print "\nSMTP authenticate uses same username and password as for POP3/IMAP.\n";
+	print "Timeout sets timeout for SMTP and POP3/IMAP connection.\n";
+	exit(3);
+}
+
+usage unless ($opt_r && $opt_f && ($opt_3 || $opt_i) && $opt_s && ($opt_w || $opt_c) && $opt_u && $opt_p);
+
+if ($opt_d) {
+	$debug = 1;
+} else {
+	$debug = 0;
+}
+if ($opt_S) {
+	$smtp_port = 465;
+} else {
+	$smtp_port = 25;
+}
+
 if ($opt_3) {
 	if ($opt_3 =~ /^([\s\w\.-_]+)$/) {
 		# untaint pop3server
@@ -74,31 +115,57 @@ if ($opt_3) {
 		unknown("Bad data in IMAP server name");
 	}
 }
-unknown("Use -u <username> (for pop/imap server)") unless ($opt_u);
-unknown("Use -p <password> (for pop/imap server)") unless ($opt_p);
-unknown("Use -s <smtp server>") unless ($opt_s);
 if ($opt_s =~ /^([\s\w\.-_]+)$/) {
 	# untaint mailserver
 	$opt_s = $1;
 } else {
 	unknown("Bad data in SMTP server name");
 }
-unknown("Set -c <secs to wait before critical> and/or -w <secs to wait before warning>") unless (($opt_c) || ($opt_w));
 unknown("Critical waiting time must be longer than warning") if ((($opt_c) && ($opt_w)) && ($opt_w >= $opt_c));
 
 sub sender {
-	my $text = "$_[0]";
-	my %mail = ( To      => "$opt_r",
-		  From    => "$opt_f",
-		  Message => "$text",
-		  Subject => "$NagiosMailflow::subject"
-		);
-	if (!sendmail(%mail)) {
-		my $err = $Mail::Sendmail::error;
-		$err =~ s@\r@@g;
-		$err =~ s@\n@ @g;
-		critical("Could not send mail through $opt_s, bailing out. Error: $err");
+	my $text = shift;
+	my $hello = $Sys::Hostname::host;
+	my $smtp;
+	if ($opt_d) {
+		print "Attempt SMTP to host $opt_s on port $smtp_port, helo $hello\n";
 	}
+	if ($opt_S) {
+		$smtp = Net::SMTP::SSL->new(
+			Host => $opt_s,
+			Hello => $hello,
+			Timeout => $timeout,
+			Debug => $debug,
+			Port => $smtp_port,
+		);
+	} else {
+		$smtp = Net::SMTP->new(
+			Host => $opt_s,
+			Hello => $hello,
+			Timeout => $timeout,
+			Debug => $debug,
+			Port => $smtp_port,
+		);
+	}
+
+	unless (defined($smtp)) {
+		critical("Could not connect to SMTP server $opt_s on port $smtp_port: $@");
+	}
+
+	if ($opt_A) {
+		$smtp->auth($opt_u, $opt_p) or critical("Could not authenticate with SMTP: " . $smtp->code(), " ", $smtp->message);
+	}
+
+	$smtp->mail($opt_f);
+	$smtp->recipient($opt_r);
+	$smtp->data;
+	$smtp->datasend("From: $opt_f\n");
+	$smtp->datasend("To: $opt_r\n");
+	$smtp->datasend("Subject: " . $NagiosMailflow::subject . "\n");
+	$smtp->datasend("\n");
+	$smtp->datasend($text);
+	$smtp->dataend;
+	$smtp->quit;
 }
 
 sub randchar {
@@ -121,15 +188,20 @@ sub randstr {
 }
 
 sub ckpop {
+	my $ssl_pop = ($opt_X) ? 1 : 0;
+	my $ssl_txt = ($opt_X) ? "on" : "off";
 	my $pop = new Mail::POP3Client( USER     => $opt_u,
 					PASSWORD => $opt_p,
 					HOST     => $opt_3,
+					DEBUG    => 1,
+					USESSL   => $ssl_pop,
+					TIMEOUT  => $timeout,
 					);
 	if ($pop->Count() == -1) {
-		return(0);
+		critical("Could not connect to pop3 server on $opt_3 (SSL: $ssl_txt): $!");
 	}
 	for (my $i = 1; $i <= $pop->Count(); $i++) {
-		if ($opt_d) { print "DEBUG: Checking POP mail $i on $opt_p.. "; }
+		if ($opt_d) { print "DEBUG: Checking POP mail $i.. "; }
 		if ($pop->Body($i) =~ /$NagiosMailflow::magic/) {
 			# Yep, found it
 			if ($opt_d) { print "FOUND\n"; }
@@ -144,16 +216,50 @@ sub ckpop {
 	return(0);
 }
 
-#sub ckmail {
-#	if ($opt_p) {
-#		return(ckpop());
-#	}
-#else {
-#
-#}
+sub ckimap {
+	my $ssl_imap = ($opt_X) ? 1 : 0;
+	my $ssl_txt = ($opt_X) ? "on" : "off";
+	my $imap;
+	my $msg;
+	my @search;
+	@search=("UNDELETED", "SUBJECT", $NagiosMailflow::subject);
+	$imap = Mail::IMAPClient->new(
+		Server		=> $opt_i,
+		User		=> $opt_u,
+		Password	=> $opt_p,
+		Ssl		=> $ssl_imap,
+		Timeout		=> $timeout,
+		Uid		=> 1,
+		Debug		=> $debug,
+	) or critical("Could not connect to IMAP server on $opt_i (SSL: $ssl_txt): $@");
+	$imap->select("INBOX") or critical("Could not select INBOX while fetching IMAP mail: $@");
+	my @msgs = $imap->search(@search) or critical("Could not get messages list: $@");
+	foreach $msg (@msgs) {
+		if ($opt_d) { print "DEBUG: Checking IMAP mail $msg.. "; }
+		if ($imap->message_string($msg) =~ /$NagiosMailflow::magic/) {
+			if ($opt_d) { print "FOUND\n"; }
+			$imap->delete_message($msg);
+			$imap->close("INBOX");
+			$imap->logout();
+			return(1);
+		} else {
+			if ($opt_d) { print "MISSING\n"; }
+		}
+	}
+	$imap->close("INBOX");
+	$imap->logout();
 
-# Set SMTP server
-unshift @{$Mail::Sendmail::mailcfg{'smtp'}} , $opt_s;
+	return(0);
+}
+
+sub ckmail {
+	if ($opt_3) {
+		return(ckpop);
+	} else {
+		return(ckimap);
+	}
+}
+
 # Set optional local hostname
 if ($opt_l) { $Sys::Hostname::host = $opt_l };
 
@@ -166,7 +272,7 @@ sender($NagiosMailflow::magic . "\n");
 
 if ($opt_w) {
 	sleep($opt_w);
-	if(ckpop()) {
+	if(ckmail) {
 		if ($opt_3) {
 			ok("Found test mail on $opt_3 (POP3 server), after $opt_w seconds wait time");
 		} else {
