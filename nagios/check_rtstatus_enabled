@@ -1,0 +1,45 @@
+#! /usr/bin/perl
+# nagios: -epn
+#
+# Check if server is healthy in load balancing using Varnish vmod_rtstatus
+# anders@fupp.net, 2015-09-10
+
+use LWP::Simple;
+use JSON;
+use Getopt::Std;
+use Data::Dumper;
+
+getopts('r:b:');
+
+sub usage {
+	print "Usage: check_rtstatus_enabled -r <rtstatus json url> -b <backend name>\n";
+	exit(3);
+}
+
+sub errexit {
+	my $ret = shift;
+	my $txt = shift;
+	print "$txt\n";
+	exit($ret);
+}
+
+usage unless (defined($opt_r) && defined($opt_b));
+
+$json = get("${opt_r}");
+errexit(3, "Could not fetch rtstatus URL $opt_r.") unless (defined($json));
+$rtref = eval {decode_json $json };
+errexit(3, "Could not decode JSON from rtstatus URL $opt_r.") if ($@);
+%rtstat = %$rtref;
+
+@backends = @{$rtstat{"backend"}};
+foreach $beref (@backends) {
+	%be = %$beref;
+	if ($be{"name"} eq "$opt_b") {
+		if ($be{"value"} eq "healthy") {
+			errexit(0, "Backend $opt_b is healthy.");
+		} else {
+			errexit(1, "Backend $opt_b is " . $be{"value"} . ".");
+		}
+	}
+}
+errexit(3, "Did not find backend $opt_b.");
