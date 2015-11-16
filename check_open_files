@@ -1,0 +1,66 @@
+#! /usr/bin/perl
+# anders@fupp.net
+# Check number of open files in Linux and FreeBSD
+
+use Getopt::Std;
+use POSIX;
+
+getopts('c:w:d');
+$ENV{PATH} = "/sbin:/bin:/usr/sbin:/usr/bin";
+
+$os = (POSIX::uname)[0];
+if ($os eq "Linux") {
+	if (open(FINFO, "/proc/sys/fs/file-nr")) {
+		$str = <FINFO>;
+		if ($str =~ /^(\d+)\s+\d+\s+(\d+)/) {
+			$numopenfiles = $1;
+			$maxopenfiles = $2;
+		}
+	} else {
+		print "Could not check file-nr in proc.\n";
+		exit(1);
+	}
+} else {
+	$maxopenfiles = `sysctl -n kern.maxfiles`;
+	$numopenfiles = `sysctl -n kern.openfiles`;
+	chomp($maxopenfiles);
+	chomp($numopenfiles);
+}
+
+if ($opt_d) {
+	print "Checking -w $opt_w and -c $opt_c against $numopenfiles files, max $maxopenfiles.\n";
+}
+
+unless ($opt_w || $opt_c) {
+	print "No limit set. No point.\n";
+	exit(3);
+}
+$pctremaining = ($maxopenfiles-$numopenfiles)/$maxopenfiles*100;
+
+if ($opt_c) {
+	if ($opt_c =~ /^([\d\.]+)%$/) {
+		$critck = $1;
+		if ($pctremaining < $critck) {
+			printf("Percentage of open files left (%.2f) below critical limit ($critck).\n", $pctremaining);
+			exit(2);
+		}
+	} else {
+		print "Must use <n>%.\n";
+		exit(3);
+	}
+}
+if ($opt_w) {
+	if ($opt_w =~ /^([\d\.]+)%$/) {
+		$warnck = $1;
+		if ($pctremaining < $warnck) {
+			printf("Percentage of open files left (%.2f) below warning limit ($warnck).\n", $pctremaining);
+			exit(2);
+		}
+	} else {
+		print "Must use <n>%.\n";
+		exit(3);
+	}
+}
+	
+printf("Percentage of open files remaining (%.2f) within limits ($opt_w/$opt_c)\n", $pctremaining);
+exit(0);
