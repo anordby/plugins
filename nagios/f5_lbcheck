@@ -17,8 +17,6 @@ require 'optparse'
 require 'resolv'
 require 'fileutils'
 
-#snmphost = "10.100.142.18"
-#community = "public"
 ## F5 hosts
 hosts = {
 	"internal" => ["10.1.1.10","10.1.1.11"],
