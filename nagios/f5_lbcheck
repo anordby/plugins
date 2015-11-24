@@ -5,7 +5,8 @@
 #
 # Features:
 # - uses F5 SNMP MIB files, no hardcoded OIDs
-# - checks arrays of load balancers to see if they are active or not
+# - checks arrays of load balancers to see if they are active or not, and use
+# the active one
 
 # NB, needs pull request for smidump preload support
 # Get it at https://github.com/hallidave/ruby-snmp/pull/9
@@ -20,9 +21,8 @@ require 'fileutils'
 #community = "public"
 ## F5 hosts
 hosts = {
-#	"internal" => ["10.100.142.17","10.100.142.18"],
-	"internal" => ["10.100.142.18","10.100.142.17"],
-	"external" => ["10.100.142.21","10.100.142.22"]
+	"internal" => ["10.1.1.10","10.1.1.11"],
+	"external" => ["10.2.1.10","10.2.1.11"]
 }
 hoststxt = hosts.keys.join("|")
 
