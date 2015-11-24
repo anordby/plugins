@@ -2,6 +2,10 @@
 # Nagios plugin to check if a server is available in F5
 # Checking ipNetToPhysicalState SNMP Table
 # anders@fupp.net, 2015-11-24
+#
+# Features:
+# - uses F5 SNMP MIB files, no hardcoded OIDs
+# - checks arrays of load balancers to see if they are active or not
 
 # NB, needs pull request for smidump preload support
 # Get it at https://github.com/hallidave/ruby-snmp/pull/9
