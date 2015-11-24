@@ -1,0 +1,186 @@
+#! /usr/bin/ruby
+# Nagios plugin to check if a server is available in F5
+# Checking ipNetToPhysicalState SNMP Table
+# anders@fupp.net, 2015-11-24
+
+# NB, needs pull request for smidump preload support
+# Get it at https://github.com/hallidave/ruby-snmp/pull/9
+
+require 'snmp'
+require 'pp'
+require 'optparse'
+require 'resolv'
+require 'fileutils'
+
+#snmphost = "10.100.142.18"
+#community = "public"
+## F5 hosts
+hosts = {
+#	"internal" => ["10.100.142.17","10.100.142.18"],
+	"internal" => ["10.100.142.18","10.100.142.17"],
+	"external" => ["10.100.142.21","10.100.142.22"]
+}
+hoststxt = hosts.keys.join("|")
+
+options = {}
+OptionParser.new do |opts|
+  opts.banner = "Usage: f5_lbcheck [options]"
+
+  opts.on("-H", "--host HOST", "F5 Host") do |a|
+    options[:host] = a
+  end
+  opts.on("-h", "--hostset HOSTSET", "F5 Hostset (#{hoststxt})") do |a|
+    options[:hostset] = a
+  end
+  opts.on("-c", "--community COMMUNITY", "SNMP Community") do |a|
+    options[:community] = a
+  end
+  opts.on("-a", "--server SERVER", "Server") do |a|
+    options[:server] = a
+  end
+  opts.on("-d", "--debug", "Debug output") do |a|
+     options[:debug] = a
+  end
+  opts.on("-M", "--mibdir MIBDIR", "MIB Directory (should have F5-BIGIP-SYSTEM-MIB.txt and be writable") do |a|
+    options[:mibdir] = a
+  end
+end.parse!
+
+states = {
+	1 => "reachable",
+	2 => "stale",
+}
+
+def clusterhost(carray, mibdir, debug)
+	cstatus = {}
+	carray.each do |chost|
+		status = ""
+		begin
+			SNMP::Manager.open(
+				:host => chost,
+				:mib_dir => mibdir,
+				:mib_modules => ["F5-BIGIP-SYSTEM-MIB"],
+			) do |snmp|
+				response = snmp.get(["sysCmFailoverStatusSummary.0"])
+				response.each_varbind do |vb|
+					status = vb.value.to_s.gsub(/.*?(\w+)$/, '\1')
+#					puts "#{vb.name.to_s} X #{vb.value.to_s} Y #{vb.value} Z status=\"#{status}\" G asn1= #{vb.value.asn1_type}"
+				end
+			end
+		rescue SNMP::RequestTimeout => e
+			puts "Error getting SNMP data from #{chost} " + e.to_s
+			exit 3
+		end
+		if debug
+			puts "Host #{chost} is #{status}."
+		end
+		if status == "active"
+			return chost
+		end
+	end
+	
+	return false
+end
+
+server = options[:server]
+if server =~ Resolv::IPv4::Regex
+	serverip = server
+	puts "serverip: #{serverip}"
+else
+	begin
+		serverip = Resolv.getaddress server
+	rescue Resolv::ResolvError => e
+		puts "Could not resolve IP for #{server} " + e.to_s
+		exit 3
+	rescue Exception => e
+		puts "Could not resolve IP for #{server}, got unknown error " + e.to_s
+		exit 3
+	end
+end
+
+if options[:hostset].nil?
+	host = options[:host]
+else
+	if options[:mibdir].nil?
+		puts "Mibdir not set. Needed."
+		exit 3
+	elsif not File.directory?(options[:mibdir])
+		puts "Mibdir " + options[:mibdir] + " does not exist or is not directory."
+		exit 3
+	end
+
+	hostset = options[:hostset]
+	if not File.exists?(options[:mibdir] + "/" + "F5-BIGIP-SYSTEM-MIB.yaml")
+		FileUtils.touch(options[:mibdir] + "/" + "F5-BIGIP-SYSTEM-MIB.yaml")
+	end
+#	SNMP::MIB.import_module(options[:mibdir] + "/" + "F5-BIGIP-SYSTEM-MIB.txt", options[:mibdir])
+	SNMP::MIB.import_module(
+		"F5-BIGIP-SYSTEM-MIB.txt",
+		options[:mibdir],
+		["F5-BIGIP-COMMON-MIB.txt"],
+	)
+	host = clusterhost(hosts[hostset], options[:mibdir], options[:debug])
+	if not (host)
+		puts "Did not find any active F5 hosts. Aborting."
+		exit 3
+	end
+end
+
+if options[:debug]
+	puts "Check SNMP host #{host}"
+end
+
+begin
+	snmp = SNMP::Manager.new(
+		:host => host,
+		:community => options[:community])
+rescue Exception => e
+	puts "Error opening SNMP connection against " + options[:host]
+	exit 3
+end
+
+#puts "Type?" + snmp.class.to_s
+#begin
+#	sarray = snmp.walk(["ipNetToPhysicalState"])
+#rescue Exception => e
+#	puts "Error getting SNMP data from " + options[:host] + " " + e.to_s
+#	exit 3
+#end
+
+lbtxt = "on F5 loadbalancer #{host}"
+
+begin
+	snmp.walk(["ipNetToPhysicalState"]) do |row|
+		row.each do |vb|
+			ip = vb.name.to_s.gsub(/.*\.(\d+(\.\d+){3})$/, '\1')
+			value = vb.value.to_i
+
+			if ip != vb.name and ip == serverip
+				if states.has_key?(value)
+					state = states[value.to_i]
+				else
+					state = "unknown"
+				end
+#				puts "state 1: " + states[1]
+				print "Server #{server} "
+				if serverip != server
+					print "with IP #{ip} "
+				end
+				puts "has state #{state} on #{lbtxt}"
+#				puts "ip: #{ip} value: #{value}"
+				case value 
+				when 1
+					exit 0
+				else
+					exit 1
+				end	
+			end
+		end
+	end
+rescue SNMP::RequestTimeout => e
+	puts "Error getting SNMP data from " + options[:host] + " " + e.to_s
+	exit 3
+end
+
+puts "Did not find server #{server} #{lbtxt}"
+exit 3
