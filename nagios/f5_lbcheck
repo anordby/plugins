@@ -89,7 +89,6 @@ end
 server = options[:server]
 if server =~ Resolv::IPv4::Regex
 	serverip = server
-	puts "serverip: #{serverip}"
 else
 	begin
 		serverip = Resolv.getaddress server
