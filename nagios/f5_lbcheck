@@ -10,6 +10,8 @@
 
 # NB, needs pull request for smidump preload support
 # Get it at https://github.com/hallidave/ruby-snmp/pull/9
+#
+# Run with --help to see options
 
 require 'snmp'
 require 'pp'
@@ -116,11 +118,13 @@ else
 		FileUtils.touch(options[:mibdir] + "/" + "F5-BIGIP-SYSTEM-MIB.yaml")
 	end
 #	SNMP::MIB.import_module(options[:mibdir] + "/" + "F5-BIGIP-SYSTEM-MIB.txt", options[:mibdir])
-	SNMP::MIB.import_module(
-		"F5-BIGIP-SYSTEM-MIB.txt",
-		options[:mibdir],
-		["F5-BIGIP-COMMON-MIB.txt"],
-	)
+	Dir.chdir(options[:mibdir]) do
+		SNMP::MIB.import_module(
+			"F5-BIGIP-SYSTEM-MIB.txt",
+			options[:mibdir],
+			["F5-BIGIP-COMMON-MIB.txt"],
+		)
+	end
 	host = clusterhost(hosts[hostset], options[:mibdir], options[:debug])
 	if not (host)
 		puts "Did not find any active F5 hosts. Aborting."
