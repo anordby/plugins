@@ -26,6 +26,7 @@ hosts = {
 }
 hoststxt = hosts.keys.join("|")
 
+ARGV.push('-h') if ARGV.empty?
 options = {}
 OptionParser.new do |opts|
   opts.banner = "Usage: f5_lbcheck [options]"
@@ -47,6 +48,10 @@ OptionParser.new do |opts|
   end
   opts.on("-M", "--mibdir MIBDIR", "MIB Directory (should have F5-BIGIP-SYSTEM-MIB.txt and be writable") do |a|
     options[:mibdir] = a
+  end
+  opts.on_tail("-h", "--help", "Show this message") do
+    puts opts
+    exit
   end
 end.parse!
 
