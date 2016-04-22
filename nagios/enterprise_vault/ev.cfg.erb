@@ -1,0 +1,25 @@
+##
+## THIS FILE IS UNDER PUPPET CONTROL. DON'T EDIT IT HERE.
+##
+
+command[check_ev_space_fail]=PowerShell.exe -File "<%= @pluginslocaldir %>/check_ev.ps1" -mode space -warning 70 -critical 60
+command[check_ev_space_indirect]=cmd.exe /c echo invoke-expression """<%= @pluginslocaldir %>\check_ev.ps1 -mode space -warning 70 -critical 60""" \; exit "$$"? | powershell.exe -command -
+command[check_ev_space]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode space -warning 10 -critical 5""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_space_cache]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode cachespace -warning 10 -critical 5""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_space_temp]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode tempspace -warning 25 -critical 5""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_services]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode services""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_dirdb]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode dirdatabase""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_db_connectivity]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode database_connectivity""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_vaultdb]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode vaultdatabase""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_fingerprintdb]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode fingerprintdatabase""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_vault_store_partitions_backup_mode]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode vault_partitions_backup_mode -warning 1 -critical 2""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_vault_store_partitions]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode vault_store_partitions -exclude 'Exchange Ptn3'""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_vault_store_partitions_connectivity]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode vault_store_partitions_connectivity""" \; exit "$$"lastexitcode | powershell.exe -command -
+# Need: check_winevent version 1.3
+command[check_ev_events]=c:/nagios/plugins/check_winevent/check_winevent.exe -log "Symantec Enterprise Vault","Symantec Enterprise Vault Converters","Symantec Enterprise Vault CryptoModule" --window "30 minutes" --critical 0 --type error --code !6842,!3427,!41133,!41459
+command[check_ev_indexes]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode indexes""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_indexes_backup_mode]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode indexes_backup_mode""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_index_location_connectivity]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode index_location_connectivity""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_websites_connectivity]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode websites_connectivity""" \; exit "$$"lastexitcode | powershell.exe -command -
+command[check_ev_tasks]=cmd.exe /c echo invoke-expression """c:\nagios\plugins\check_ev.ps1 -mode tasks""" \; exit "$$"lastexitcode | powershell.exe -command -
+#command[check_ev_tasks]=powershell.exe -file c:/nagios/plugins/check_ev.ps1 -mode tasks
