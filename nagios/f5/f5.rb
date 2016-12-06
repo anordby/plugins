@@ -103,17 +103,9 @@ def check_f5_status
     pstatus_a = item_array(pstatus[:item])
     if not pstatus[:item].nil?
       pstatus_n = pstatus[:item].length
-      puts "Pools statuses: count=#{pstatus_a.length.to_s} of #{pools_a.length.to_s} total."
-#      if pstatus_a.length != pools_a.length
-#        puts "Ulik lengde på pools liste og pools status?"
-#        puts "Pools_a:"
-#        pp pools_a
-#        puts "Pstatus:"
-#        pp pstatus
-#      end
-#    pp pstatus
-    else
-      puts "No pools status found."
+#      puts "Pools statuses: count=#{pstatus_a.length.to_s} of #{pools_a.length.to_s} total."
+#    else
+#      puts "No pools status found."
     end
 
     begin
@@ -122,46 +114,15 @@ def check_f5_status
       puts "Could not get pool member list for all pools in folder #{folder}: #{e.to_s}"
     end
     pmembersall_a = item_array(pmembersall[:item])
-    puts "Pmembersall count: #{pmembersall_a.length.to_s}"
+#    puts "Pmembersall count: #{pmembersall_a.length.to_s}"
 
     pi = 0
     pools_a.each do |pool|
       puts "Checking pool #{pool}" if $debug
 
-#      pi = 0
-#      item_array(pools[:item]).each do |pool|
-#        next if pool != "/Common/service_splunk_pool"
-#        if pstatus.nil? or pstatus[:item].nil? or pstatus[:item][pi].nil?
-#          puts "Unexpected pstatus data?"
-#          puts "Pools lengde: " + item_array(pools[:item]).length.to_s
-#          puts "Pstatus " + pstatus.length.to_s + ":"
-#          pp pstatus
-#          next
-#        end
-#      puts "Pool status:"
-#      puts "PI class: " + pstatus[:item].class.to_s
-#      pp pstatus
-#      next
-#      if pstatus[:item].nil?
-#          puts "No pstatus at all" if $debug
-#      elsif pstatus[:item][pi].nil?
-#          puts "No pstatus for pool item?" if $debug
-#      else
-#      if not pstatus_a[pi].nil?
       status = pstatus_a[pi][:availability_status]
-#       puts "Status for pool #{pool}: #{status}"
       sendres status, avail_ret(status), "pool:#{pool}"
-#      end
 
-#      begin
-#        pmembers = $api.LocalLB.Pool.get_member_v2(:pool_names => { item: [ pool ] })
-#      rescue Exception => e
-#        sendres "Could not get pool member list for pool #{pool} in folder #{folder}: #{e.to_s}", 3, "status"
-#      end
-#      if pmembers[:item].nil? or pmembers[:item][:item].nil? or pmembers[:item][:item].class == Array
-#        puts "Unexpected pool members data:"
-#        pp pmembers
-#      else
       if pmembersall_a[pi][:item].nil?
         puts "No pool members found."
       end
@@ -173,23 +134,7 @@ def check_f5_status
       rescue Exception => e
          sendres "Could not get pool member status for pool #{pool} in folder #{folder}: #{e.to_s}", 3, "status"
       end
-#      puts "Got pmstatuses:"
-#      pp pmstatuses
-#      if pmstatuses.nil?
-#        puts "No pmstatuses."
-#      else
-#        puts "Got pmstatuses."
-#        pp pmstatuses
-#      end
       pmstatuses_a = item_array(pmstatuses[:item][:item])
-#      puts "PMdata:"
-#      pp pmembersall_a[pi]
-#          :members => { item: [ pmembers[:item][:item] ] }
-
-#        rescue Exception => e
-#          sendres "Could not get pool member status for pool #{pool} in folder #{folder}: #{e.to_s}", 3, "status"
-#        end
-#        if not pmstatuses[:item].nil? and not pmstatuses[:item][:item].nil? and pmstatuses[:item][:item].class == Array
       pmi = 0
       item_array(pmembersall_a[pi][:item]).each do |pmember|
         pmstatus = pmstatuses_a[pmi][:availability_status]
@@ -261,7 +206,7 @@ def check_f5_status
       else
         noderet = avail_ret(nodestatus)
       end
-      puts "Got node #{node} result ret=#{noderet.to_s} txt=#{nodetxt}"
+#      puts "Got node #{node} result ret=#{noderet.to_s} txt=#{nodetxt}"
       sendres nodetxt, noderet, "node:#{node}"
     end
   end
