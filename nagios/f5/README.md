@@ -12,8 +12,10 @@ pool members, vses and if you wish nodes for availability. And will perform
 those checks as passive checks. You will want to run it periodically in cron. I
 do this through these shell scripts that iterate through the list of hosts:
 
+```
 13 * * * * cd /home/xuser/f5 && ./f5_gen.sh >f5_gen.out 2>&1
 */5 * * * * cd /home/xuser/f5 && ./f5_update.sh >f5_update.out 2>&1
+```
 
 Edit f5_gen.sh and f5_update.sh to use your IPs/hosts. Also you need to:
 
@@ -24,17 +26,15 @@ file to send in check results.
 
 - install Ruby and rubygems:
 
+```bash
 gem install f5-icontrol
 
 gem install ipaddress
-
-
-13 * * * * cd /home/xuser/f5 && ./f5_gen.sh >f5_gen.out 2>&1
-*/5 * * * * cd /home/xuser/f5 && ./f5_update.sh >f5_update.out 2>&1G
+```
 
 For command line options try f5.rb --help.
 
-In nagois.cfg:
+In nagios.cfg:
 
 - accept_passive_service_checks must be set to 1.
 
@@ -43,7 +43,9 @@ In nagois.cfg:
 To be able to restart Nagios automatically you need to add sudo access for it
 that matches what you have in f5_gen.sh:
 
+```
 xuser    ALL=(root) NOPASSWD: /usr/sbin/service nagios force-reload
+```
 
 2) check_f5_failover_state
 
@@ -54,8 +56,11 @@ check_f5_failover_state_yourcompany.
 
 For your sudoers file:
 
+```
 nagios     ALL=(xuser) NOPASSWD: /home/xuser/f5/check_f5_failover_state_yourcompany
+```
 
+```
 define command{
         command_name    check_f5_failover_state
         command_line    /usr/bin/sudo -u xuser /home/xuser/f5/check_f5_failover_state_yourcompany "$ARG1$"
@@ -75,12 +80,14 @@ define service {
         service_description     f5_failover_state
         use                     generic-service
 }
+```
 
 For command line options try check_f5_failover_state --help.
 
 3) Monitor your F5 devices uptime to see if they have crashes or unexpectedly
 rebooted. This can be done using the standard Nagios snmp plugin.
 
+```
 define service {
         check_command           check_snmp!-C public -o sysUpTime.0 -w 8640000:
         contact_groups          f5-admins
@@ -88,6 +95,7 @@ define service {
         service_description     snmp_uptime
         use                     generic-service
 }
+```
 
 Anders Nordby <anders@fupp.net>
 2016-12-06
