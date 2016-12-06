@@ -239,7 +239,11 @@ foreach $crldp (@crldps) {
     }
 #    print "Check CRL DP $crldp $cachefile\n";
     $crl = "";
-    open(CMD, "openssl crl -inform DER -text -in $cachefile -noout 2>&1 |");
+    my $format;
+    open(my $cachefile_io, '<', $cachefile);
+    $format = <$cachefile_io> =~ /-----BEGIN X509 CRL-----/ ? 'PEM' : 'DER';
+    close $cachefile_io;
+    open(CMD, "openssl crl -inform $format -text -in $cachefile -noout 2>&1 |");
     while (<CMD>) {
         $crl .= $_;
     }
@@ -248,7 +252,7 @@ foreach $crldp (@crldps) {
     if ($ret != 0) {
         $crl =~ s@\n@ @g;
         $crl =~ s@\s+$@@;
-        doexit(2, "Could not parse DER from URL $crldp while checking $hosttxt: $crl");
+        doexit(2, "Could not parse $format from URL $crldp while checking $hosttxt: $crl");
     }
 
     # Crude CRL parsing goes here
