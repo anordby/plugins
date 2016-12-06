@@ -233,29 +233,37 @@ def check_f5_status
         vsret = avail_ret(vsstatus)
       end
       sendres vstxt, vsret, "vs:#{vs}"
- 
-#        puts "Got vs #{vs}"
-#      puts "VS statuses:"
-#      pp vsstatuses
     end
-#      vses[:item].each do |vs|
-#        service = "vs:#{vs}"
-#        $nagios_config << ERB.new(service_config_template).result(binding)
-#      end
-#    end
-#
-#    begin
-#      nodes = $api.LocalLB.NodeAddressV2.get_list
-#    rescue Exception => e
-#      eexit "Could not get node list in folder #{folder}: #{e.to_s}", 3, "status"
-#    end
-#    if nodes[:item].class == Array
-#      nodes[:item].each do |node|
-#        service = "node:#{node}"
-#        $nagios_config << ERB.new(service_config_template).result(binding)
-#      end
-#    end
-#  end
+
+    # Skip node checks if node_checks set to 0.
+    next if (not $config["node_checks"].nil?) and $config["node_checks"].to_s == "0"
+
+    begin
+      nodes = $api.LocalLB.NodeAddressV2.get_list
+    rescue Exception => e
+      eexit "Could not get node list in folder #{folder}: #{e.to_s}", 3, "status"
+    end
+    nodes_a = item_array(nodes[:item])
+    begin
+      nodestatuses = $api.LocalLB.NodeAddressV2.get_object_status( :nodes => { item: nodes_a } )
+    rescue Exception => e
+      eexit "Could not get node statuses in folder #{folder}: #{e.to_s}", 3, "status"
+    end
+    nodestatuses_a = item_array(nodestatuses[:item])
+    nn = 0
+    nodes_a.each do |node|
+      nodestatus = nodestatuses_a[nn][:availability_status]
+      nodenstatus = nodestatuses_a[nn][:enabled_status]
+      nodetxt = nodestatus
+      if nodestatus == "ENABLED_STATUS_DISABLED"
+        noderet = 0
+        nodetxt << " (#{vsenstatus})"
+      else
+        noderet = avail_ret(nodestatus)
+      end
+      puts "Got node #{node} result ret=#{noderet.to_s} txt=#{nodetxt}"
+      sendres nodetxt, noderet, "node:#{node}"
+    end
   end
 end
 
@@ -335,14 +343,15 @@ def generate_config
       $nagios_config << ERB.new(service_config_template).result(binding)
     end
 
-    next if $config["node_checks"].nil? or $config["node_checks"].to_s != "1"
+    # Skip node checks if node_checks set to 0.
+    next if (not $config["node_checks"].nil?) and $config["node_checks"].to_s == "0"
 
     begin
       nodes = $api.LocalLB.NodeAddressV2.get_list
     rescue Exception => e
       eexit "Could not get node list in folder #{folder}: #{e.to_s}", 3, "status"
     end
-    item_array(nodes[:item]).each do |vs|
+    item_array(nodes[:item]).each do |node|
       service = "node:#{node}"
       $nagios_config << ERB.new(service_config_template).result(binding)
     end
