@@ -1,0 +1,4 @@
+#! /bin/sh
+
+cd `dirname $0`
+./check_f5_failover_state --username YOURUSER --password YOURPASSWORD --hosts "$1"

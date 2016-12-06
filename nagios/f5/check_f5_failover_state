@@ -1,0 +1,87 @@
+#! /usr/bin/ruby
+# Monitor F5 load balancers with Nagios
+# 2016-11-18, Anders Nordby <anders@fupp.net>
+
+# Uses f5-icontrol from rubygems. Easier to install with new Linux distros
+# as it uses Savon for SOAP instead of legacy soap support.
+
+# This script checks that there are active nodes in a cluster (lists of hosts)
+
+require 'rubygems'
+require 'f5/icontrol'
+require 'pp'
+require 'optparse'
+
+ARGV.push('--help') if ARGV.empty?
+options = {}
+optparse = OptionParser.new do |opts|
+  opts.banner = "Usage: check_f5_failover_state [options]"
+
+  opts.on("-h", "--hosts HOSTS", "F5 Hosts (comma separated)") do |a|
+    options[:hosts] = a
+  end
+  opts.on("-u", "--username USERNAME", "F5 Username") do |a|
+    options[:username] = a
+  end
+  opts.on("-p", "--password PASSWORD", "F5 Password") do |a|
+    options[:password] = a
+  end
+  opts.on_tail("--help", "Show this message") do
+    puts opts
+    exit 3
+  end
+end
+
+begin
+  optparse.parse!
+  mandatory = [:username, :password, :hosts]
+  missing = mandatory.select{ |param| options[param].nil? }
+  raise OptionParser::MissingArgument, missing.join(', ') unless missing.empty?
+rescue OptionParser::ParseError => e
+    puts e
+    puts optparse
+  exit 3
+end
+
+def eexit (txt, excode)
+	puts txt
+	exit excode
+end
+
+$standbyhosts = 0
+$activehosts = 0
+
+@hosts = options[:hosts].split(",")
+@hosts.each do |host|
+  F5::Icontrol.configure do |f|
+    f.host = host
+    f.username = options[:username]
+    f.password = options[:password]
+  end
+  $api = F5::Icontrol::API.new
+#  puts "Sjekker F5 host #{host}:"
+  begin
+    state = $api.System.Failover.get_failover_state.to_s
+  rescue Exception => e
+    eexit("Could not get failover state from F5 host #{host}: #{e.to_s}", 3)
+  end
+  case state
+  when "FAILOVER_STATE_ACTIVE"
+    $activehosts += 1
+  when "FAILOVER_STATE_STANDBY"
+    $standbyhosts += 1
+  else
+    eexit("Unexpected failover state #{state} from F5 host #{host}.",3)
+    exit 2
+  end
+end
+print "Checked F5 hosts " + options[:hosts] + ": "
+if $activehosts != 1
+  # No, or more than one active hosts? Not good.
+  eexit("ERROR, #{$activehosts} active hosts",2)
+elsif $standbyhosts == 0
+  # No standby hostS? Not so good.
+  eexit("WARNING, #{$standbyhosts} standby hosts",1)
+else
+  eexit("#{$activehosts} active hosts, #{$standbyhosts} standby hosts. All OK",0)
+end
