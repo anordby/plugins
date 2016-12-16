@@ -57,7 +57,7 @@ parser.add_option( "-m",
 		   dest="mode",
 		   default="accesses",
 		   help="Mode for checks: <accesses|idle>, maximum accesses \
-                    per second or minimum idle workers. Default is: accesses")
+                    per second or minimum % idle workers. Default is: accesses")
 
 group = OptionGroup(parser, "Warning/critical thresholds",
                     "Use these options to set warning/critical thresholds \
@@ -209,21 +209,24 @@ if __name__ == "__main__":
     result = transform_dict(resParse)
 
     if mode == "idle":
+        idlepct = result[2]/((result[2]+result[1])*1.0)*100
         if critical != -1 and warning != -2:
-            if result[2] < critical:
-                end(CRITICAL, "%i idle workers below critical level %i, %i \
-busy workers. Apache serves %f requests per second." % (result[2], \
-critical, result[1], result[0]))
-            elif result[2] < warning:
-                end(CRITICAL, "%i idle workers below warning level %i, %i \
-busy workers. Apache serves %f requests per second." % (result[2], \
-warning, result[1], result[0]))
+            if idlepct < critical:
+                end(CRITICAL, "%0.2f%% idle workers, below critical level %i. %i \
+busy workers, %i idle. Apache serves %f requests per second." % (idlepct, \
+critical, result[1], result[2], result[0]))
+            elif idlepct < warning:
+                end(CRITICAL, "%0.2f%% idle workers, below warning level %i. %i \
+busy workers, %i idle. Apache serves %f requests per second." % (idlepct, \
+warning, result[1], result[2], result[0]))
             else:
                 end(OK, "Apache serves %f requests per second. %i busy workers, \
-%i idle workers." % (result[0], result[1], result[2]))
+%i idle workers. %0.2f%% workers idle." % (result[0], result[1], result[2], \
+idlepct))
         else:
             end(OK, "Apache serves %f requests per second. %i busy workers, %i \
-idle workers." % (result[0], result[1], result[2]))
+idle workers. %0.2f%% workers idle." % (result[0], result[1], result[2], \
+idlepct))
     elif mode == "accesses":
         if critical != -1 and warning != -2:
             if result[0] >= critical:
