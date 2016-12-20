@@ -27,3 +27,7 @@ dummy_command: check_dummy!0
 service_template: generic-service
 # Nagios host template
 host_template: generic-host
+# Nagios service exceptions
+exceptions:
+  "_(dev|test|staging)":
+    contact_groups: dummy-admins

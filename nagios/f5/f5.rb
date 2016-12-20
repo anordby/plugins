@@ -34,7 +34,7 @@ def service_config_template()
 define service {
 	use			<%= $config["service_template"] %>
 	check_command		<%= $config["dummy_command"] %>
-	contact_groups		<%= $config["contact_groups"] %>
+	contact_groups		<%= contact_groups %>
 	host_name		<%= $f5_hostname %>
 	register		1
 	service_description	<%= service %>
@@ -47,6 +47,21 @@ define service {
         passive_checks_enabled  1
 }
   }
+end
+
+def addservice(service)
+  contact_groups = $config["contact_groups"]
+  if not $config["exceptions"].nil?
+    $config["exceptions"].each_pair do |exception,ecfg|
+      if service =~ /#{exception}/
+        if not ecfg["contact_groups"].nil?
+          contact_groups = ecfg["contact_groups"]
+        end
+      end
+    end
+  end
+  puts "Add service #{service} to config."
+  $nagios_config << ERB.new(service_config_template).result(binding)
 end
 
 def host_config_template()
@@ -118,9 +133,9 @@ def check_f5_status
 
     pi = 0
     pools_a.each do |pool|
-      puts "Checking pool #{pool}" if $debug
 
       status = pstatus_a[pi][:availability_status]
+      puts "Checking pool #{pool} got status #{status}" if $debug
       sendres status, avail_ret(status), "pool:#{pool}"
 
       if pmembersall_a[pi][:item].nil?
@@ -148,6 +163,7 @@ def check_f5_status
         else
           pmret = avail_ret(pmstatus)
         end
+        puts "Checking pool member pm:#{pool}:#{pmaddr}:#{pmport} got status #{pmstatus} enstatus #{pmenstatus}" if $debug
         sendres pmtxt, pmret, "pm:#{pool}:#{pmaddr}:#{pmport}"
         pmi += 1
       end
@@ -177,6 +193,7 @@ def check_f5_status
       else
         vsret = avail_ret(vsstatus)
       end
+      puts "Checking vs #{vs} got status #{vsstatus} enstatus #{vsenstatus}" if $debug
       sendres vstxt, vsret, "vs:#{vs}"
     end
 
@@ -206,7 +223,7 @@ def check_f5_status
       else
         noderet = avail_ret(nodestatus)
       end
-#      puts "Got node #{node} result ret=#{noderet.to_s} txt=#{nodetxt}"
+      puts "Checking node #{node} got status #{nodestatus} enstatus #{nodeenstatus}" if $debug
       sendres nodetxt, noderet, "node:#{node}"
     end
   end
@@ -233,10 +250,8 @@ def generate_config
     puts host_config_template
     $nagios_config << ERB.new(host_config_template).result(binding)
   end
-  service = "status"
-  $nagios_config << ERB.new(service_config_template).result(binding)
-  service = "failover_state"
-  $nagios_config << ERB.new(service_config_template).result(binding)
+  addservice("status")
+  addservice("failover_state")
 
   $folders.each do |folder|
     puts "Checking folder #{folder}" if $debug
@@ -254,8 +269,7 @@ def generate_config
 
     item_array(pools[:item]).each do |pool|
       puts "Checking pool #{pool}" if $debug
-      service = "pool:#{pool}"
-      $nagios_config << ERB.new(service_config_template).result(binding)
+      addservice("pool:#{pool}")
 
       begin
         pmembers = $api.LocalLB.Pool.get_member_v2(:pool_names => { item: [ pool ] })
@@ -271,8 +285,8 @@ def generate_config
           puts "Unknown address or port for pool member?"
           pp pmember
         else
-          service = "pm:#{pool}:#{pmember[:address]}:#{pmember[:port]}"
-          $nagios_config << ERB.new(service_config_template).result(binding)            end 
+          addservice("pm:#{pool}:#{pmember[:address]}:#{pmember[:port]}")
+        end
       end
     end
 
@@ -284,8 +298,7 @@ def generate_config
 
 
     item_array(vses[:item]).each do |vs|
-      service = "vs:#{vs}"
-      $nagios_config << ERB.new(service_config_template).result(binding)
+      addservice("vs:#{vs}")
     end
 
     # Skip node checks if node_checks set to 0.
@@ -297,8 +310,7 @@ def generate_config
       eexit "Could not get node list in folder #{folder}: #{e.to_s}", 3, "status"
     end
     item_array(nodes[:item]).each do |node|
-      service = "node:#{node}"
-      $nagios_config << ERB.new(service_config_template).result(binding)
+      addservice("node:#{node}")
     end
   end
 end
@@ -306,6 +318,7 @@ end
 def updateconfig
   bfn = "#{$f5_hostname}.cfg"
   tfn = ENV["HOME"] + "/.nagios_check_f5_gen_#{bfn}.tmp"
+  afn = ENV["HOME"] + "/.nagios_check_f5_gen_#{bfn}-arc.tmp"
   cfn = $config["configdir"] + "/#{bfn}"
   begin
     @tfile = File.open(tfn, "w")
@@ -323,7 +336,8 @@ def updateconfig
     spctr = spct.round(2)
     maxshrink = $config["config_maxshrink"]
     if newsize < cursize and spct >= maxshrink
-      eexit("New config shrinked by #{spctr.to_s}, more than max shrink #{maxshrink.to_s}%. Not using it.", 3, "status")
+      FileUtils.cp tfn, afn
+      eexit("New config shrinked by #{spctr.to_s}%, more than max shrink #{maxshrink.to_s}%. Not using it, copied to #{afn}.", 3, "status")
     end
     oldsum = md5.hexdigest(File.read(cfn)).to_s
   else
@@ -419,10 +433,15 @@ F5::Icontrol.configure do |f|
   f.password = $config["password"]
 end
 
+$cmdfn = $config["nagios_cmdfile"]
+if not File.pipe?($cmdfn)
+  puts "Nagios command file #{$cmdfn} is not a pipe. Is Nagios running? Aborting."
+  exit 2
+end
 begin
-  $cmdfile = File.open($config["nagios_cmdfile"], 'a')
+  $cmdfile = File.open($cmdfn, 'a')
 rescue Exception => e
-  puts "Could not append to Nagios cmdfile " + $config["nagios_cmdfile"] + " #{e.to_s}. Aborting operation."
+  puts "Could not append to Nagios cmdfile #{$cmdfn}: #{e.to_s}. Aborting operation."
   exit 2
 end
 
