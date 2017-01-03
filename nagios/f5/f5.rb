@@ -60,8 +60,11 @@ def addservice(service)
       end
     end
   end
-  puts "Add service #{service} to config."
-  $nagios_config << ERB.new(service_config_template).result(binding)
+  puts "Add service #{service} to hash."
+  $services[service] = {
+    "contact_groups" => contact_groups
+  }
+#  $nagios_config << ERB.new(service_config_template).result(binding)
 end
 
 def host_config_template()
@@ -250,11 +253,12 @@ def generate_config
     puts host_config_template
     $nagios_config << ERB.new(host_config_template).result(binding)
   end
+  $services = {}
   addservice("status")
   addservice("failover_state")
 
   $folders.each do |folder|
-    puts "Checking folder #{folder}" if $debug
+    puts "Checking folder #{folder}"
     begin
       $api.System.Session.set_active_folder(:folder => folder)
     rescue Exception => e
@@ -312,6 +316,12 @@ def generate_config
     item_array(nodes[:item]).each do |node|
       addservice("node:#{node}")
     end
+  end
+
+  $services.each_pair do |service,sopts|
+    contact_groups = sopts["contact_groups"]
+    puts "Add service #{service} to config."
+    $nagios_config << ERB.new(service_config_template).result(binding)
   end
 end
 
