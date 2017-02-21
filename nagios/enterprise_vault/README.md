@@ -11,4 +11,10 @@ nrpe.cfg and/or NRPE config files on your Windows server.
 - Add monitoring on your Nagios server, hints are in ev.pp here which I use to
 set it up using Puppet.
 
+- You may/probably need to adjust which user the NRPE/Nagios agent runs as in
+Windows, in order to have it running with a user that has Enterprise Vault
+privileges (we do this here) instead of the default local system account
+SvcXinet that WiNRPE uses initially. Go to your services list, find XinetServer
+service which runs NRPE, and change account in the Log On tab.
+
 Anders Nordby <anders@fupp.net>
