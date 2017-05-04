@@ -26,7 +26,19 @@ def getfolders
   rescue Exception => e
     eexit "Could not get folders list: #{e.to_s}", 3, "status"
   end
-  $folders.unshift("/Common")
+  case $folders.class.to_s
+  when "Array"
+    if $debug
+      puts "Folder list is an array, as expected."
+    end
+  else
+    eexit "Folders is not an array but: #{$folders.class.to_s}", 3, "status"
+  end
+  begin
+    $folders.unshift("/Common")
+  rescue Exception => e
+    eexit "Could not add /Common to folder list: #{e.to_s}", 3, "status"
+  end
 end
 
 def service_config_template()
