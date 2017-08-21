@@ -1,0 +1,91 @@
+#! /usr/bin/ruby
+##
+### THIS FILE IS UNDER PUPPET CONTROL. DON'T EDIT IT HERE.
+###
+# Check state of Jenkins computers - so far
+# Anders Nordby <anders@fupp.net>"
+# 2017-06-21
+
+require 'httparty'
+require 'json'
+require 'pp'
+require 'mechanize'
+
+@loginurl = "http://jenkins.foo.local/login"
+@user = "xxx"
+@pass = "yyy"
+
+def do_login
+	begin
+		page = @agent.get @loginurl
+	rescue Exception => e
+		puts "Could not get login URL #{@loginurl}: #{e.to_s}"
+		exit 3
+	end
+
+	login_form = page.form_with :name => "login"
+	if login_form.nil?
+		puts "Could not find login form."
+		exit 3
+	else
+		begin
+			login_form.field_with(:name => "j_username").value = @user
+			login_form.field_with(:name => "j_password").value = @pass
+			login_results = @agent.submit login_form
+		rescue Exception => e
+			puts "Could not post login form: #{e.to_s}"
+			exit 3
+		end
+	end
+end
+
+jobs = {}
+i=1
+@agent = Mechanize.new
+#agent.log = Logger.new "byggstatus.log"
+do_login
+
+resturl = "http://jenkins.moller.local/computer/api/json?pretty=true"
+begin
+	response = @agent.get resturl
+rescue Exception => e
+	puts "Tried to fetch url #{resturl}. But got unexpected response: #{e.to_s}"
+end
+if response.nil?
+	puts "No response received."
+	exit 3
+end
+
+begin
+	json = JSON.parse(response.body)
+rescue Exception => e
+	puts "Problems parsing response body: #{e.to_s}"
+	exit 3
+end
+
+oktxt = ""
+warntxt = ""
+ret = 0
+json["computer"].each do |computer|
+  cname = computer["displayName"]
+  if computer["offline"]
+    if computer["temporarilyOffline"] and computer["offlineCauseReason"] =~ /OFFLINEOK/
+      oktxt << " #{cname}:tempoffline"
+    elsif computer["temporarilyOffline"]
+      warntxt << " #{cname}:tempoffline"
+    else
+      warntxt << " #{cname}:offline"
+    end
+  else
+    oktxt << " #{cname}:online"
+  end
+#  puts "Offline: " + computer["offline"].to_s
+end
+
+if warntxt.length > 0
+  puts "Problems with Jenkins computers:#{warntxt}"
+  exit 1
+else
+  puts "All Jenkins computers OK:#{oktxt}"
+  exit 0
+end
