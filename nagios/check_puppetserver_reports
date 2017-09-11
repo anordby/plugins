@@ -19,7 +19,7 @@ require 'puppet'
 
 warntxt = ""
 okstatuses = ["unchanged","changed"]
-okloglevels = ["notice"]
+okloglevels = ["notice","info"]
 # Reportdir for Puppet Opensource 4.x
 uxtime = Time.now.to_i
 servercount=0
