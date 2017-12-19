@@ -216,7 +216,7 @@ if __name__ == "__main__":
 busy workers, %i idle. Apache serves %f requests per second." % (idlepct, \
 critical, result[1], result[2], result[0]))
             elif idlepct < warning:
-                end(CRITICAL, "%0.2f%% idle workers, below warning level %i. %i \
+                end(WARNING, "%0.2f%% idle workers, below warning level %i. %i \
 busy workers, %i idle. Apache serves %f requests per second." % (idlepct, \
 warning, result[1], result[2], result[0]))
             else:
