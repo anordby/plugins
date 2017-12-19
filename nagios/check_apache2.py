@@ -51,6 +51,14 @@ parser.add_option( "-p",
 		   help="You may define a port with the -p option. \
 		         Default is: 80.")
 
+parser.add_option( "-s",
+                   "--https",
+		   action="store_true",
+		   dest="protocol",
+		   default=False,
+		   help="You may connect over https with the -s option. \
+		         Default is: http.")
+
 parser.add_option( "-m",
                    "--mode",
 		   type="string",
@@ -87,6 +95,10 @@ port = options.port
 warning = options.warning
 critical = options.critical
 mode = options.mode
+if options.protocol:
+    protocol = 'https'
+else:
+    protocol = 'http'
 
 def end(status, message):
     """Exits the script with the first argument as the return code and the
@@ -138,7 +150,7 @@ def retrieve_status_page():
     """Get's the server's status page and raises an exception if it's not
        accessible."""
 
-    statusPage = "http://%s:%s/server-status?auto" % (hostname, port)
+    statusPage = "%s://%s:%s/server-status?auto" % (protocol, hostname, port)
     try:
         response = urllib2.urlopen(statusPage)
         content = response.read()
