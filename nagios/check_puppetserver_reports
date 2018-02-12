@@ -1,0 +1,69 @@
+#! /opt/puppetlabs/puppet/bin/ruby
+##
+## THIS FILE IS UNDER PUPPET CONTROL. DON'T EDIT IT HERE.
+##
+# Check Puppet server for failed or missing runs
+# anders@fupp.net, 2016-07-07
+# Make sure you run plugin as a user that has access to the report files.
+
+reportdir = "/opt/puppetlabs/server/data/puppetserver/reports"
+maxage=10800
+
+# Puppet v4 paths?
+p4rdir="/opt/puppetlabs/puppet/lib/ruby/vendor_ruby"
+$LOAD_PATH.unshift(p4rdir) unless $LOAD_PATH.include?(p4rdir)
+
+require 'yaml'
+require 'pp'
+require 'puppet'
+
+warntxt = ""
+okstatuses = ["unchanged","changed"]
+okloglevels = ["notice","info"]
+# Reportdir for Puppet Opensource 4.x
+uxtime = Time.now.to_i
+servercount=0
+warncount=0
+Dir.foreach(reportdir) do |server|
+	serverdir="#{reportdir}/#{server}"
+	next if server =~ /^\./
+	next if not File.directory?(serverdir)
+
+	# Expect error.
+	servercount += 1
+	warncount += 1
+	# Get the latest report
+	report = Dir.glob("#{serverdir}/*").max_by {|f| File.mtime(f)}
+	reporttime = File.mtime(report).to_i
+	reportage = uxtime-reporttime
+	if reportage > maxage
+		# Too old? Report only that then
+		warntxt << " #{server} (not updated in #{reportage}s)"
+		next
+	end
+	begin
+		reportdata = YAML.load(File.read(report))
+	rescue Exception => e
+		puts "Could not parse report #{report}: #{e.to_s}"
+	end
+#	puts "Found serverdir #{serverdir}, report: #{report} age: #{reportage.to_s}"
+
+	if not okstatuses.include?(reportdata.status)
+		warntxt << " #{server} (status:" + reportdata.status + ")"
+	elsif not okloglevels.include?(reportdata.logs[0].level.to_s)
+		warntxt << " #{server} (loglevel:" + reportdata.logs[0].level.to_s + ")"
+	elsif reportdata.cached_catalog_status == "on_failure"
+		warntxt << " #{server} (cached_catalog_status:" + reportdata.cached_catalog_status + ")"
+	else
+		# Not an error then
+		warncount -= 1
+	end
+	#pp reportdata
+end
+if warntxt.empty?
+	puts "All #{servercount.to_s} servers have OK statuses."
+	exit 0
+else
+	puts "#{warncount.to_s} out of #{servercount.to_s} Puppet agents has problems:#{warntxt}"
+	exit 1
+end

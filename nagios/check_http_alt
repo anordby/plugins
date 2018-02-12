@@ -253,7 +253,7 @@ if ($opt_k) {
 	$getstr .= "$opt_k\r\n";
 }
 if ($opt_a) {
-	$getstr .= "Authorization: Basic " . encode_base64($opt_a) . "\r\n";
+	$getstr .= "Authorization: Basic " . encode_base64($opt_a, "") . "\r\n";
 }
 $getstr .= "Connection: close\r\n\r\n";
 print $sock $getstr;

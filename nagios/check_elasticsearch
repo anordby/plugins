@@ -1,0 +1,84 @@
+#! /usr/bin/ruby
+# Check Elasticsearch health
+# Anders Nordby <anders@fupp.net>
+# 2017-06-16
+
+require 'pp'
+require 'optparse'
+require 'json'
+require 'httparty'
+
+options = {}
+optparse = OptionParser.new do |opts|
+  opts.banner = "Usage: check_couchbase [options]"
+
+  opts.on("-p", "--port PORT", "Port number") do |a|
+    options[:port] = a
+  end
+  opts.on("-h", "--host HOST", "Hostname") do |a|
+    options[:host] = a
+  end
+  opts.on("-v", "--verbose", "Verbose output") do |a|
+    options[:verbose] = a
+  end
+  opts.on_tail("--help", "Show this message") do
+    puts opts
+    exit 3
+  end
+end.parse!
+
+if options[:port].nil?
+  port = "9200"
+else
+  port = options[:port]
+end
+if options[:host].nil?
+  host = "localhost"
+else
+  host = options[:host]
+end
+
+url = "http://#{host}:#{port}/_cluster/health"
+
+begin
+  response = HTTParty.get(url)
+rescue Exception => e
+  puts "Could not fetch url #{url}: #{e.to_s}"
+  exit 3
+end
+
+if response.code != 200
+  puts "Got unexpected response code #{response.code.to_s} from URL #{url}."
+  exit 3
+end
+
+begin
+  json = JSON.parse(response.body)
+rescue Exception => e
+  puts "Could not parse JSON output from Elasticsearch: #{e.to_s}"
+end
+
+if options[:verbose]
+  pp json
+end
+
+if json.class.to_s != "Hash"
+  puts "JSON output from cluster health API returned unexpected data: not a hash"
+  exit 3
+elsif json["status"].nil?
+  puts "JSON output from cluster health API returned unexpected data: no health status"
+  exit 3
+else
+  case json["status"]
+  when "green"
+    ret=0
+  when "yellow"
+    ret=1
+  when "red"
+    ret=2
+  else
+    ret=3
+  end
+  puts "Cluster health status: " + json["status"]
+  exit ret
+end
