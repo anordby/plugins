@@ -1,0 +1,187 @@
+#! /usr/bin/ruby
+##
+### THIS FILE IS UNDER PUPPET CONTROL. DON'T EDIT IT HERE.
+###
+# Check various Jenkins states:
+# - computers (nodes) availability
+# - length of queue
+
+# Anders Nordby <anders@fupp.net>"
+# 2017-06-21
+
+require 'httparty'
+require 'json'
+require 'pp'
+require 'mechanize'
+require 'optparse'
+
+uxtime = Time.now.to_i
+
+options = {}
+optparse = OptionParser.new do |opts|
+  opts.banner = "Usage: check_jenkins [options]"
+  opts.on("-m", "--mode MODE", "Mode (<computers|queue>)") do |a|
+    options[:mode] = a
+  end
+  opts.on("-u", "--user USER", "Username") do |a|
+    options[:user] = a
+  end
+  opts.on("-p", "--pass PASSWORD", "Password") do |a|
+    options[:password] = a
+  end
+  opts.on("-f", "--authfile AUTHFILE", "Authentication file (username:password)") do |a|
+    options[:authfile] = a
+  end
+  opts.on("-q", "--queuelength QUEUELENGTH", "Queue length limit") do |a|
+    options[:queuelength] = a
+  end
+  opts.on("-u", "--url JENKINSURL", "Jenkins base URL") do |a|
+    options[:url] = a
+  end
+  opts.on("-t", "--queuetime QUEUETIME", "Queue time limit in seconds") do |a|
+    options[:queuetime] = a
+  end
+  opts.on_tail("--help", "Show this message") do
+    puts opts
+    exit 3
+  end
+end.parse!
+
+if options[:url].nil?
+  fail "Must specify Jenkins base URL with --url. See --help."
+else
+  baseurl = options[:url].gsub(/\/$/, "")
+end
+
+case options[:mode]
+when "computers"
+  resturl = "#{baseurl}/computer/api/json?pretty=true"
+when "queue"
+  resturl = "#{baseurl}/queue/api/json?pretty=true"
+when nil
+  fail "Specify --mode. See --help"
+else
+  fail "Unknown mode " + options[:mode].to_s
+end
+@loginurl = "#{baseurl}/login"
+
+if not options[:authfile].nil?
+  authcfg = File.open(options[:authfile]).first
+  (@user,@pass) = authcfg.split(":")
+end
+if not options[:user].nil?
+  @user = options[:user]
+end
+if not options[:password].nil?
+  @pass = options[:password]
+end
+if @user.nil? or @pass.nil?
+  fail "Must specify user and password. See --help."
+end
+
+if options[:queuetime].nil?
+  queuetime = 1800
+else
+  queuetime = options[:queuetime].to_i
+end
+if options[:queuelength].nil?
+  queuelength = 10
+else
+  queuelength = options[:queuelength].to_i
+end
+ 
+def do_login
+	begin
+		page = @agent.get @loginurl
+	rescue Exception => e
+		puts "Could not get login URL #{@loginurl}: #{e.to_s}"
+		exit 3
+	end
+
+	login_form = page.form_with :name => "login"
+	if login_form.nil?
+		puts "Could not find login form."
+		exit 3
+	else
+		begin
+			login_form.field_with(:name => "j_username").value = @user
+			login_form.field_with(:name => "j_password").value = @pass
+			login_results = @agent.submit login_form
+		rescue Exception => e
+			puts "Could not post login form: #{e.to_s}"
+			exit 3
+		end
+	end
+end
+
+i=1
+@agent = Mechanize.new
+#agent.log = Logger.new "byggstatus.log"
+do_login
+
+begin
+	response = @agent.get resturl
+rescue Exception => e
+	puts "Tried to fetch url #{resturl}. But got unexpected response: #{e.to_s}"
+end
+if response.nil?
+	puts "No response received."
+	exit 3
+end
+
+begin
+	json = JSON.parse(response.body)
+#	json = JSON.parse(File.open("/home/b050ann/jenkins.json").read)
+rescue Exception => e
+	puts "Problems parsing response body: #{e.to_s}"
+	exit 3
+end
+
+oktxt = ""
+warntxt = ""
+case options[:mode]
+when "computers"
+  json["computer"].each do |computer|
+    cname = computer["displayName"]
+    if computer["offline"]
+      if computer["temporarilyOffline"] and computer["offlineCauseReason"] =~ /OFFLINEOK/
+        oktxt << " #{cname}:tempoffline"
+      elsif computer["temporarilyOffline"]
+        warntxt << " #{cname}:tempoffline"
+      else
+        warntxt << " #{cname}:offline"
+      end
+    else
+      oktxt << " #{cname}:online"
+    end
+  #  puts "Offline: " + computer["offline"].to_s
+  end
+
+  if warntxt.length > 0
+    puts "Problems with Jenkins computers:#{warntxt}"
+    exit 1
+  else
+    puts "All Jenkins computers OK:#{oktxt}"
+    exit 0
+  end
+when "queue"
+#  pp json
+  djobs = 0
+  jobs=json["items"].length
+  json["items"].each do |item|
+    qtime = uxtime-(item["inQueueSince"]/1000)
+    if qtime > queuetime
+      djobs += 1
+    end
+ #   puts "uxtime=#{uxtime.to_s}"
+  end
+  if djobs > 1
+    puts "#{djobs.to_s} jobs waited longer than expected limit #{queuetime.to_s}s, #{jobs.to_s} total jobs in queue (limit #{queuelength.to_s})"
+    exit 1
+  elsif jobs > queuelength
+    puts "#{jobs.to_s} total jobs in queue, higher than expected limit #{queuelength.to_s}"
+    exit 1
+  else
+    puts "#{jobs.to_s} total jobs in queue (limit #{queuelength}), #{djobs.to_s} past time limit #{queuetime.to_s}s"
+  end
+end
