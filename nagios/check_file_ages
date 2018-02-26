@@ -1,0 +1,107 @@
+#! /usr/bin/perl
+# nagios: -epn
+
+##
+## THIS FILE IS UNDER PUPPET CONTROL. DON'T EDIT IT HERE.
+##
+
+# Check age and size for multiple files
+# anders@fupp.net, 2015-07-01
+
+use Getopt::Std;
+use File::Find;
+use File::Basename;
+
+getopts('e:d:w:c:W:C:m:ax:');
+*name   = *File::Find::name;
+
+sub usage {
+	print "check_files_ages -e <extension> -d <directory> [-w <secs>] [-c <secs>]\n";
+	print "[-a (age is minage)] [-W <size>] [-C <size>] [-m <minimum number of files>]\n";
+	print "[-x <filename regexp exclude match>]\n";
+	print "Size is in bytes. Add - after size to indicate or smaller.\n";
+	exit(3);
+}
+usage unless ($opt_w || $opt_c || $opt_W || $opt_C);
+$nfiles = 0;
+$uxtime = scalar(time);
+$lasttime = 0;
+$lastfn = "";
+$warntxt = "";
+$crittxt = "";
+$minfiles = ($opt_m) ? $opt_m : 1;
+
+sub ckfiles {
+	my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime);
+	(($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime) = lstat($_));
+	next unless (-f _ && /^.*\.$opt_e\z/s);
+	next if (($opt_x) && $_ =~ $opt_x));
+	$nfiles++;
+
+	$fn = basename($_);
+	$age = $uxtime-$mtime;
+
+	if ($mtime > $lasttime) {
+		$lasttime = $mtime;
+		$lastfn = $fn;
+	}
+	if ($opt_c && $age > $opt_c && (!$opt_a)) {
+		$crittxt .= " $fn (age $age)";
+		return;
+	} elsif ($opt_w && $age > $opt_w && (!$opt_a)) {
+		$warntxt .= " $fn (age $age)";
+		return;
+	}
+
+	if ($opt_C) {
+		if ($opt_C =~ /(\d+)\-$/) {
+			if ($size > $1) {
+				$crittxt .= " $fn (size $size)";
+				return;
+			}
+		} elsif ($opt_C =~ /^\d+$/) {
+			if ($size < $opt_C) {
+				$crittxt .= " $fn (size $size)";
+				return;
+			}
+		}
+	}
+	if ($opt_W) {
+		if ($opt_W =~ /(\-*\d+)\-$/) {
+			if ($size > $1) {
+				$warntxt .= " $fn (size $size)";
+				return;
+			}
+		} elsif ($opt_W =~ /^\-*\d+$/) {
+			if ($size < $opt_W) {
+				$warntxt .= " $fn (size $size)";
+				return;
+			}
+		}
+	}
+}
+
+File::Find::find({wanted => \&ckfiles}, $opt_d);
+
+if ($opt_a && $lasttime != 0) {
+	$lastage = $uxtime-$lasttime;
+	if ($opt_c && $lastage > $opt_c) {
+		$crittxt .= " $lastfn (latest file too old, age $age)";
+	} elsif ($opt_w && $lastage > $opt_w) {
+		$warntxt .= " $lastfn (latest file too old, age $age)";
+	}
+}
+
+if ($crittxt ne "") {
+	print "Found critical errors:$crittxt\n";
+	exit(2);
+} elsif ($warntxt ne "") {
+	print "Found warning errors:$warntxt\n";
+	exit(1);
+} elsif ($nfiles < $minfiles) {
+	print "Checked $nfiles files with extension $opt_e in directory $opt_d. Found less files than minimal limit $minfiles.\n";
+	exit(1);
+} else {
+	print "Found no problems. Checked $nfiles files with extension $opt_e in directory $opt_d.\n";
+	exit(0);
+}
