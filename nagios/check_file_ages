@@ -35,7 +35,7 @@ sub ckfiles {
 	my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime);
 	(($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime) = lstat($_));
 	next unless (-f _ && /^.*\.$opt_e\z/s);
-	next if (($opt_x) && $_ =~ $opt_x));
+	next if (($opt_x) && $_ =~ $opt_x);
 	$nfiles++;
 
 	$fn = basename($_);
