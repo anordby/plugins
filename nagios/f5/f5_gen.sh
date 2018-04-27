@@ -10,7 +10,9 @@ cfgupdated=0
 for h in $f5_hosts
 do
 	echo "$h =>"
-	./f5.rb -c --host $h >f5_gen.tmp 2>&1
+	timeout 600 ./f5.rb -c --host $h >f5_gen.tmp 2>&1
+	res=$?
+	echo "Result: $?" >>f5_gen.tmp
 	cat f5_gen.tmp
 	if [ -n "`egrep 'Config .* changed' f5_gen.tmp`" ]
 	then
