@@ -13,6 +13,12 @@ do
 	timeout 600 ./f5.rb -c --host $h >f5_gen.tmp 2>&1
 	res=$?
 	echo "Result: $?" >>f5_gen.tmp
+	if [ $res -gt 100 ]
+	then
+		uxtime="`date +%s`"
+		# Timeout reached
+		echo "[$uxtime] PROCESS_SERVICE_CHECK_RESULT;$h;status;3;Could not get updated config from $h due to timeout." >>$cmdfile
+	fi
 	cat f5_gen.tmp
 	if [ -n "`egrep 'Config .* changed' f5_gen.tmp`" ]
 	then
