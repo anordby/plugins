@@ -217,6 +217,10 @@ if ($opt_d) {
 @crldps = @{$decoded->CRLDistributionPoints};
 $crlskip = 0;
 foreach $crldp (@crldps) {
+    # skip 'ldap' CRL DistributionPoint URI
+    if ( $crldp =~ /^ldap.*/ ) {
+        next;
+    }
     if ($opt_d) {
         print "Checking CRL DP $crldp.\n";
     }
