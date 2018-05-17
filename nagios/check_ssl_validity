@@ -19,10 +19,10 @@ use POSIX qw(strftime);
 use Digest::MD5 qw(md5_hex);
 use LWP::Simple;
 
-getopts('p:t:H:dw:c:I:C:d');
+getopts('p:t:H:dw:c:I:C:dS');
 
 sub usage {
-        print "check_ssl_validity -H <cert hostname> [-I <IP/host>] [-p <port>]\n[-t <timeout>] [-w <expire warning (days)>] [-c <expire critical (dats)>]\n[-C (CRL update frequency in seconds)] [-d (debug)]\n";
+        print "check_ssl_validity -H <cert hostname> [-I <IP/host>] [-p <port>]\n[-t <timeout>] [-w <expire warning (days)>] [-c <expire critical (dats)>]\n[-C (CRL update frequency in seconds)] [-d (debug)]\n[-S (skip CRL validity check)\n";
         print "\nWill look for hostname provided with -H in the certificate, but will contact\n";
         print "server with host/IP provided by -I (optional)\n";
         exit(1);
@@ -214,90 +214,103 @@ $serial = lc(sprintf("%x", $serial));
 if ($opt_d) {
     print "Certificate serial: $serial\n";
 }
+
 @crldps = @{$decoded->CRLDistributionPoints};
 $crlskip = 0;
-foreach $crldp (@crldps) {
+# skip CRL validity check
+if ($opt_S) {
     if ($opt_d) {
-        print "Checking CRL DP $crldp.\n";
+        print " ... skipping CRL validity check !!!\n";
     }
-    $cachefile = "/tmp/" . md5_hex($crldp) . "_crl.tmp";
-    if (-f $cachefile) {
-        $cacheage = $uxtime-(stat($cachefile))[9];
-        if ($cacheage > $crlupdatefreq) {
-            if ($opt_d) { print "Download update, more than a day old.\n"; }
-            updatecrl($crldp, $cachefile);
-        } else {
-            if ($opt_d) { print "Reusing cached copy of it.\n"; }
-#            print "Reuse CRL DP cachefile for $crldp, less than a day old.\n";
-#            No need to check CRL, it has already been so? Well we could have many certs to check.
-#            $crlskip = 1;
-#            next;
+} else {
+    foreach $crldp (@crldps) {
+        if ($opt_d) {
+            print "Checking CRL DP $crldp.\n";
         }
-    } else {
-        if ($opt_d) { print "Download initial copy.\n"; }
-        updatecrl($crldp, $cachefile);
-    }
-#    print "Check CRL DP $crldp $cachefile\n";
-    $crl = "";
-    my $format;
-    open(my $cachefile_io, '<', $cachefile);
-    $format = <$cachefile_io> =~ /-----BEGIN X509 CRL-----/ ? 'PEM' : 'DER';
-    close $cachefile_io;
-    open(CMD, "openssl crl -inform $format -text -in $cachefile -noout 2>&1 |");
-    while (<CMD>) {
-        $crl .= $_;
-    }
-    close(CMD);
-    $ret = $?;
-    if ($ret != 0) {
-        $crl =~ s@\n@ @g;
-        $crl =~ s@\s+$@@;
-        doexit(2, "Could not parse $format from URL $crldp while checking $hosttxt: $crl");
-    }
-
-    # Crude CRL parsing goes here
-    $mode = 0;
-    foreach $cline (split(/\n/, $crl)) {
-#        print "cline=$cline\n";
-        if ($cline =~ /.*Next Update: (.+)/) {
-            $nextup = $1;
-            $nextuptime = str2time($nextup);
-            $crlvalid = $nextuptime-$uxtime;
-            if ($opt_d) { print "Next CRL update: $nextup\n"; }
-#            print "crlvalid: $crlvalid\n";
-            if ($crlvalid < 0) {
-                doexit(2, "Could not use CRL from $crldp, it expired past next update on $nextup");
+        $cachefile = "/tmp/" . md5_hex($crldp) . "_crl.tmp";
+        if (-f $cachefile) {
+            $cacheage = $uxtime-(stat($cachefile))[9];
+            if ($cacheage > $crlupdatefreq) {
+                if ($opt_d) { print "Download update, more than a day old.\n"; }
+                updatecrl($crldp, $cachefile);
+            } else {
+                if ($opt_d) { print "Reusing cached copy of it.\n"; }
+#               print "Reuse CRL DP cachefile for $crldp, less than a day old.\n";
+#               No need to check CRL, it has already been so? Well we could have many certs to check.
+#               $crlskip = 1;
+#               next;
             }
-#            print "nextuptime $nextuptime nextup $nextup X\n";
-        } elsif ($cline =~ /.*Last Update: (.+)/) {
-            $lastup = $1;
-            if ($opt_d) { print "Last CRL update: $lastup\n"; }
-#            $lastuptime = str2time($lastup);
-#            print "lastuptime $lastuptime lastup $lastup X\n";
-        } elsif ($mode == 0) {
-            if ($cline =~ /.*Serial Number: (\S+)/i) {
-                ckserial;
-                $crserial = lc($1);
-                $crrev = "";
-            } elsif ($cline =~ /.*Revocation Date: (.+)/i) {
-                $crrev = $1;
-            } 
-        } elsif ($cline =~ /Signature Algorithm/) {
-            last;
+        } else {
+            if ($opt_d) { print "Download initial copy.\n"; }
+            updatecrl($crldp, $cachefile);
         }
+#       print "Check CRL DP $crldp $cachefile\n";
+        $crl = "";
+        my $format;
+        open(my $cachefile_io, '<', $cachefile);
+        $format = <$cachefile_io> =~ /-----BEGIN X509 CRL-----/ ? 'PEM' : 'DER';
+        close $cachefile_io;
+        open(CMD, "openssl crl -inform $format -text -in $cachefile -noout 2>&1 |");
+        while (<CMD>) {
+            $crl .= $_;
+        }
+        close(CMD);
+        $ret = $?;
+        if ($ret != 0) {
+            $crl =~ s@\n@ @g;
+            $crl =~ s@\s+$@@;
+            doexit(2, "Could not parse $format from URL $crldp while checking $hosttxt: $crl");
+        }
+
+        # Crude CRL parsing goes here
+        $mode = 0;
+        foreach $cline (split(/\n/, $crl)) {
+#           print "cline=$cline\n";
+            if ($cline =~ /.*Next Update: (.+)/) {
+                $nextup = $1;
+                $nextuptime = str2time($nextup);
+                $crlvalid = $nextuptime-$uxtime;
+                if ($opt_d) { print "Next CRL update: $nextup\n"; }
+#               print "crlvalid: $crlvalid\n";
+                if ($crlvalid < 0) {
+                    doexit(2, "Could not use CRL from $crldp, it expired past next update on $nextup");
+                }
+#               print "nextuptime $nextuptime nextup $nextup X\n";
+            } elsif ($cline =~ /.*Last Update: (.+)/) {
+                $lastup = $1;
+                if ($opt_d) { print "Last CRL update: $lastup\n"; }
+#               $lastuptime = str2time($lastup);
+#               print "lastuptime $lastuptime lastup $lastup X\n";
+            } elsif ($mode == 0) {
+                if ($cline =~ /.*Serial Number: (\S+)/i) {
+                    ckserial;
+                    $crserial = lc($1);
+                    $crrev = "";
+                } elsif ($cline =~ /.*Revocation Date: (.+)/i) {
+                    $crrev = $1;
+                }
+            } elsif ($cline =~ /Signature Algorithm/) {
+                last;
+            }
+        }
+        ckserial;
     }
-    ckserial;
 }
+
 if (-f $tempfile) {
     unlink ($tempfile);
 }
 
 $oktxt =~ s@\s+$@@;
 print "$oktxt, still valid for $certdaysfmt days. ";
-if ($crlskip == 0) {
-    print "Serial $serial not found on any Certificate Revokation Lists.\n";
+if (!$opt_S) {
+    if ($crlskip == 0) {
+        print "Serial $serial not found on any Certificate Revokation Lists.\n";
+    } else {
+        print "CRL checks skipped, next check in " . ($crlupdatefreq - $cacheage) . " seconds.\n";
+    }
 } else {
-    print "CRL checks skipped, next check in " . ($crlupdatefreq - $cacheage) . " seconds.\n";
+    print "\n";
 }
 
 exit 0;
