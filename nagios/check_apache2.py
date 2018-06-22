@@ -225,36 +225,36 @@ if __name__ == "__main__":
         if critical != -1 and warning != -2:
             if idlepct < critical:
                 end(CRITICAL, "%0.2f%% idle workers, below critical level %i. %i \
-busy workers, %i idle. Apache serves %f requests per second." % (idlepct, \
-critical, result[1], result[2], result[0]))
+busy workers, %i idle. Apache serves %f requests per second. | requests=%f;;;; busyworkers=%i;;;; idleworkers=%i;;;;" % (idlepct, \
+critical, result[1], result[2], result[0], result[0], result[1], result[2]))
             elif idlepct < warning:
                 end(WARNING, "%0.2f%% idle workers, below warning level %i. %i \
-busy workers, %i idle. Apache serves %f requests per second." % (idlepct, \
-warning, result[1], result[2], result[0]))
+busy workers, %i idle. Apache serves %f requests per second. | requests=%f;;;; busyworkers=%i;;;; idleworkers=%i;;;;" % (idlepct, \
+warning, result[1], result[2], result[0], result[0], result[1], result[2]))
             else:
                 end(OK, "Apache serves %f requests per second. %i busy workers, \
-%i idle workers. %0.2f%% workers idle." % (result[0], result[1], result[2], \
-idlepct))
+%i idle workers. %0.2f%% workers idle. | requests=%f;;;; busyworkers=%i;;;; idleworkers=%i;;;;" % (result[0], result[1], result[2], \
+idlepct, result[0], result[1], result[2]))
         else:
             end(OK, "Apache serves %f requests per second. %i busy workers, %i \
-idle workers. %0.2f%% workers idle." % (result[0], result[1], result[2], \
-idlepct))
+idle workers. %0.2f%% workers idle. | requests=%f;;;; busyworkers=%i;;;; idleworkers=%i;;;;" % (result[0], result[1], result[2], \
+idlepct, result[0], result[1], result[2]))
     elif mode == "accesses":
         if critical != -1 and warning != -2:
             if result[0] >= critical:
                 end(CRITICAL, "Apache serves %f requests per second, exceeding \
-critical threshold! %i busy workers, %i idle workers." % (result[0], \
-result[1], result[2]))
+critical threshold! %i busy workers, %i idle workers. | requests=%f;;;; busyworkers=%i;;;; idleworkers=%i;;;;" % (result[0], \
+result[1], result[2], result[0], result[1], result[2]))
             elif result[0] >= warning and result[0] <= critical:
                 end(WARNING, "Apache serves %f requests per second, exceeding \
-warning threshold! %i busy workers, %i idle workers." % (result[0], \
-result[1], result[2]))
+warning threshold! %i busy workers, %i idle workers. | requests=%f;;;; busyworkers=%i;;;; idleworkers=%i;;;;" % (result[0], \
+result[1], result[2], result[0], result[1], result[2]))
             else:
                 end(OK, "Apache serves %f requests per second. %i busy workers, \
-%i idle workers." % (result[0], result[1], result[2]))
+%i idle workers. | requests=%f;;;; busyworkers=%i;;;; idleworkers=%i;;;;" % (result[0], result[1], result[2], result[0], result[1], result[2]))
         else:
             end(OK, "Apache serves %f requests per second. %i busy workers, %i \
-idle workers." % (result[0], result[1], result[2]))
+idle workers. | requests=%f;;;; busyworkers=%i;;;; idleworkers=%i;;;;" % (result[0], result[1], result[2], result[0], result[1], result[2]))
     else:
         print "Unknown mode %s" % mode
         sys.exit(0)
