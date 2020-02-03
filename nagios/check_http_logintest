@@ -1,0 +1,233 @@
+#! /usr/bin/ruby
+##
+### THIS FILE IS UNDER PUPPET CONTROL. DON'T EDIT IT HERE.
+###
+#
+# Log in to web page, then load subsequent page and check it for known content
+# anders@fupp.net, 2016-02-10
+#
+require 'pp'
+require 'mechanize'
+require 'optparse'
+require 'erb'
+require 'securerandom'
+include ERB::Util
+
+headers = {}
+ARGV.push('--help') if ARGV.empty?
+options = {}
+optparse = OptionParser.new do |opts|
+  opts.banner = "Usage: check_http_logintest [options]"
+
+  opts.on("-d", "--debug", "Run with debug info") do |a|
+    options[:debug] = a
+  end
+  opts.on("-u", "--username USERNAME", "Username") do |a|
+    options[:username] = a
+  end
+  opts.on("--userfield USERFIELD", "Username field") do |a|
+    options[:userfield] = a
+  end
+  opts.on("-p", "--password PASSWORD", "Password") do |a|
+    options[:password] = a
+  end
+  opts.on("-h", "--htmldir HTMLDIR", "HTML report directory") do |a|
+    options[:htmldir] = a
+  end
+  opts.on("--htmlurl HTMLURL", "HTML reports base URL") do |a|
+    options[:htmlurl] = a
+  end
+  opts.on("-H", "--header HEADER", "HTTP request header") do |a|
+    hkey,hval = a.split /:\s*/, 2
+    headers[hkey] = hval
+  end
+  opts.on("--passfield PASSFIELD", "Password field") do |a|
+    options[:passfield] = a
+  end
+  opts.on("-r", "--regex REGEX", "Regexp string to look for") do |a|
+    options[:regex] = a
+  end
+  opts.on("--posturl POSTURL", "Login form post URL") do |a|
+    options[:posturl] = a
+  end
+  opts.on("--postdata POSTDATA", "Login post data (JSON)") do |a|
+    options[:postdata] = a
+  end
+  opts.on("-U", "--url URL", "URL") do |a|
+    options[:url] = a
+  end
+  opts.on("-f", "--form FORM", "Form") do |a|
+    options[:form] = a
+  end
+  opts.on("--read-timeout READ-TIMEOUT", "Length of time to attempt to read data from the server") do |a|
+    options[:read_timeout] = a
+  end
+  opts.on("--open-timeout OPEN-TIMEOUT", "Length of time to wait until a connection is opened in seconds") do |a|
+    options[:open_timeout] = a
+  end
+  opts.on_tail("--help", "Show this message") do
+    puts opts
+    exit 3
+  end
+end
+if options[:userfield].nil?
+	userfield = "username"
+else
+	userfield = options[:userfield]
+end
+if options[:passfield].nil?
+	passfield = "password"
+else
+	passfield = options[:passfield]
+end
+
+begin
+  optparse.parse!
+  mandatory = [:url, :regex]
+  missing = mandatory.select{ |param| options[param].nil? }
+  raise OptionParser::MissingArgument, missing.join(', ') unless missing.empty?
+rescue OptionParser::ParseError => e
+    puts e
+    puts optparse
+  exit 3
+end
+
+def writeoutput (txt, body = nil)
+  str = txt
+  if (not $htmldir.nil?) and (not $htmlurl.nil?)
+    fn = SecureRandom.hex(8)
+    fullfn = "#{$htmldir}/#{fn}"
+    begin
+      File.open(fullfn, "w") do |f|
+        f.write("Checked URL #{$url} at " + Time.now.strftime("%Y-%m-%d %H:%M:%S") + "\n")
+        f.write(txt)
+        if not body.nil?
+          f.write("\nGot this body:\n#{body}")
+        end
+      end
+    rescue Exception => e
+      puts " Errors writing #{fullfn}: " + e.to_s
+      exit 2
+    end
+    str << " #{$htmlurl}/#{fn}"
+  end
+  puts str
+end 
+
+$htmldir = options[:htmldir]
+$htmlurl = options[:htmlurl]
+$url = options[:url]
+
+agent = Mechanize.new
+agent.redirect_ok = true
+#agent.log = Logger.new "mech.log"
+agent.user_agent_alias = 'Mechanize'
+if not options[:read_timeout].nil?
+  agent.read_timeout = options[:read_timeout]
+end
+if not options[:open_timeout].nil?
+  agent.open_timeout = options[:open_timeout]
+end
+
+begin
+  page = agent.get options[:url], [], nil, headers
+rescue Exception => e
+  writeoutput "Could not load page with url " + options[:url] + ": " + e.to_s
+  exit 3
+end
+if options[:debug]
+  puts "Loaded url " + options[:url] + " OK"
+end
+
+login_form = page.form_with :name => options[:form]
+if login_form.nil?
+  if options[:form].nil? and options[:posturl].nil?
+    puts "No form or posturl specified."
+    exit 2
+  elsif options[:posturl].nil?
+    writeoutput "Did not find form " + options[:form] + " and posturl not given.\n", page.body
+    exit 2
+  else
+    if options[:postdata].nil?
+      postdata = {}
+    else
+      begin
+        postdata = JSON.parse(options[:postdata])
+      rescue Exception => e
+	puts "Invalid JSON postdata used with --postdata."
+        exit 2
+      end
+    end
+    if not options[:username].nil?
+      postdata[userfield] = options[:username]
+    end
+    if not options[:password].nil?
+      postdata[passfield] = options[:password]
+    end
+    if postdata.empty?
+      puts "No --postdata or username/password used, nothing to post."
+      exit 2
+    end
+    begin
+      login_results = agent.post(options[:posturl], postdata.to_json, headers)
+    rescue Exception => e
+      writeoutput "Could not post login to post url " + options[:posturl] + " successfully: #{e.to_s}"
+      exit 2
+    end
+  end
+else
+  begin
+    login_form.field_with(:name => userfield).value = options[:username]
+    login_form.field_with(:name => passfield).value = options[:password]
+    login_results = agent.submit login_form
+  rescue Exception => e
+    writeoutput "Could not post login form successfully: #{e.to_s}"
+    exit 2
+  end
+end
+
+if login_results.nil?
+  puts "No results from login form/post."
+  exit 3
+end
+
+if login_results.body.length > 0
+  body = login_results.body
+else
+  begin
+    page = agent.get options[:url], [], nil, headers
+  rescue Exception => e
+    writeoutput "Could not re-load page with url " + options[:url] + ": " + e.to_s
+    exit 2
+  end
+  body = page.body
+end
+
+if page.code.to_i == 200
+  if options[:debug]
+    puts "Refetching page returned HTTP status 200."
+  end
+else
+  puts "Got unexpected HTTP status " + page.code.to_s + " while refetching.", page.body
+  exit 3
+end
+
+if options[:debug]
+  puts "Got page body with length: " + body.length.to_s + " after logging in"
+end
+
+regex = options[:regex]
+# Escape it if we are without tty (running under Nagios)
+if $stdout.tty?
+  regex_escaped = regex
+else
+  regex_escaped = html_escape(regex)
+end
+
+if body =~ /#{regex}/
+  puts "Page " + options[:url] + " contains regex #{regex} after logging in as user " + options[:username]
+  exit 0
+else
+  writeoutput("Page " + options[:url] + " does not contain regex #{regex} after logging in as user " + options[:username], body)
+  exit 2
+end
