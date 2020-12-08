@@ -14,7 +14,7 @@ use POSIX;
 # libmail-pop3client-perl
 
 getopts('s:3:i:u:p:l:f:r:w:c:dSXAt:');
-use vars qw { $opt_s $opt_3 $opt_i $opt_u $opt_p $opt_f $opt_r $opt_l $opt_c $opt_w $opt_d $opt_S $opt_X $debug $smtp_port $smtp $opt_A $opt_t $timeout };
+use vars qw { $opt_s $opt_3 $opt_i $opt_u $opt_p $opt_f $opt_r $opt_l $opt_c $opt_w $opt_d $opt_S $opt_X $debug $smtp_port $smtp $opt_A $opt_t $timeout @sockargs };
 if ($opt_3) {
 	use Mail::POP3Client;
 }
@@ -97,8 +97,10 @@ if ($opt_d) {
 }
 if ($opt_S) {
 	$smtp_port = 465;
+	@sockargs = [ SSL_verify_mode => 0],
 } else {
 	$smtp_port = 25;
+	@sockargs = [];
 }
 
 if ($opt_3) {
@@ -230,6 +232,7 @@ sub ckimap {
 		User		=> $opt_u,
 		Password	=> $opt_p,
 		Ssl		=> $ssl_imap,
+		Socketargs	=> @sockargs,
 		Timeout		=> $timeout,
 		Uid		=> 1,
 		Debug		=> $debug,
