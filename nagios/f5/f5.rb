@@ -210,6 +210,7 @@ def check_f5_status
       end
       puts "Checking vs #{vs} got status #{vsstatus} enstatus #{vsenstatus}" if $debug
       sendres vstxt, vsret, "vs:#{vs}"
+      vn += 1
     end
 
     # Skip node checks if node_checks set to 0.
@@ -241,6 +242,7 @@ def check_f5_status
       puts "Checking node #{node} got status #{nodestatus} enstatus #{nodeenstatus}" if $debug
       sendres nodetxt, noderet, "node:#{node}"
     end
+    nn += 1
   end
 end
 
