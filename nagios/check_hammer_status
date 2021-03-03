@@ -1,0 +1,81 @@
+#! /usr/bin/ruby
+# anders@fupp.net, 2021-03-03
+
+# is your satellite server behaving?
+# checks for missing and failing services
+# restart all services with: satellite-maintain service restart
+# previously this was: katello-service restart
+# ... or reboot
+
+#module nrpe_satellite 0.8;
+#
+#require {
+#        type http_port_t;
+#        type syslogd_var_run_t;
+#        type tmp_t;
+#        type var_run_t;
+#        type nrpe_t;
+#        type httpd_t;
+#        class tcp_socket name_connect;
+#        class dir { write add_name remove_name };
+#        class file { getattr write read append create open lock ioctl unlink };
+#        class capability net_admin;
+#}
+
+##============= nrpe_t ==============
+#allow nrpe_t http_port_t:tcp_socket name_connect;
+#allow nrpe_t syslogd_var_run_t:dir write;
+#allow nrpe_t syslogd_var_run_t:file { getattr write append read open lock ioctl };
+#allow nrpe_t tmp_t:dir { write add_name remove_name };
+#allow nrpe_t tmp_t:file { create write unlink };
+#allow nrpe_t var_run_t:file { getattr read open ioctl };
+
+##============= httpd_t ==============
+#allow httpd_t self:capability net_admin;
+
+#checkmodule -M -m -o nrpe_satellite.mod nrpe_satellite.te
+#semodule_package -o nrpe_satellite.pp -m nrpe_satellite.mod
+#semodule -i nrpe_satellite.pp
+
+hammerstatus_text = %x{/usr/bin/hammer ping 2>/dev/null}
+services = {
+  "database" => {},
+  "candlepin" => {},
+  "candlepin_events" => {},
+  "candlepin_auth" => {},
+  "katello_events" => {},
+  "pulp" => {},
+  "pulp_auth" => {},
+  "foreman_tasks" => {},
+}
+
+hmatches = hammerstatus_text.scan(/^(\w+):\s*?\n\s*?Status:\s+(\w+)/m)
+hmatches.each do |m|
+  svc = m[0]
+  st = m[1]
+  if services[svc].nil?
+    services[svc] = {}
+  end
+  services[svc]["status"] = st
+
+end
+
+ret=0
+okservices = []
+failservices = []
+
+services.each_pair do |svc,sst|
+  if sst["status"].nil? or sst["status"] != "ok"
+    failservices.push(svc)
+  else
+    okservices.push(svc)
+  end
+end
+
+if failservices.length != 0
+  puts "Failing services: #{failservices.join(' ')} |OK services: #{okservices.join(' ')}"
+  exit 1
+else
+  puts "OK services: #{okservices.join(' ')}"
+  exit 0
+end
