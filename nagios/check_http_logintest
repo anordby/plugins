@@ -11,6 +11,7 @@ require 'mechanize'
 require 'optparse'
 require 'erb'
 require 'securerandom'
+require 'json'
 include ERB::Util
 
 headers = {}
