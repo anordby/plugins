@@ -1,0 +1,92 @@
+#! /usr/bin/ruby
+
+# Anders Nordby <anders@fupp.net>, 2021-05-04
+# Uses PuppetDB API v4, tested with PuppetDB 5
+# Remember to enable PuppetDB report processing: reports = store,puppetdb
+
+require "httparty"
+require "json"
+require "pp"
+
+maxage=1900
+url="http://localhost:8080/pdb/query/v4/nodes"
+nstatusdmp=ENV["HOME"] + "/.check_puppetdb_nodes-status.json"
+
+nodes = HTTParty.get(url).parsed_response
+#pp nodes
+nres = {
+	"failed" => [],
+	"changed" => [],
+	"unchanged" => [],
+	"unreported" => [],
+	"unresponsive" => [],
+	"unknown" => [],
+}
+nowtime = DateTime.now
+wtxt=""
+nodes.each do |node|
+  nname=node["certname"]
+  if node["report_timestamp"].nil?
+#    puts "report_timestamp er nil med " + node["certname"]
+    nres["unreported"].push(nname)
+    wtxt << " #{nname} (unreported, nil report_timestamp)"
+    next
+  else
+    #ntime = DateTime.strptime(node["report_timestamp"])
+    begin
+      ntime = DateTime.strptime(node["report_timestamp"], "%Y-%m-%dT%H:%M:%S.%NZ")
+    rescue Exception => e
+      puts "Wrong timestamp " + node["report_timestamp"] + " for node #{nname} e: #{e.to_s}" if STDOUT.isatty
+      nres["unreported"].push(nname)
+      wtxt << " #{nname} (could not parse timestamp)"
+      next
+    end
+    rsecs = ((nowtime-ntime)*86400).to_i
+    if rsecs > maxage
+      nres["unresponsive"].push(nname)
+      wtxt << " #{nname} (unresponsive, no report since #{rsecs}s)"
+      next 
+    end
+  end
+
+  case node["cached_catalog_status"]
+  when "not_used"
+  when "on_failure"
+    nres["failed"].push(nname)
+      wtxt << " #{nname} (using cached status on failure)"
+    next
+  else
+    nres["unknown"].push(nname)
+    puts "Unknown cached_catalog_status " + node["cached_catalog_status"] + "for node #{nname}" if STDOUT.isatty
+    wtxt << " #{nname} (unknown cached_catalog_status " + node["cached_catalog_status"] +")"
+    next
+  end
+
+  case node["latest_report_status"]
+  when "changed"
+    nres["changed"].push(nname)
+    next
+  when "unchanged"
+    nres["unchanged"].push(nname)
+    next
+  when "failed"
+    nres["failed"].push(nname)
+      wtxt << " #{nname} (failed)"
+    next
+  else
+    nres["unknown"].push(nname)
+    puts "Unknown latest_report_status " + node["latest_report_status"] + "for node #{nname}" if STDOUT.isatty
+    wtxt << " #{nname} (unknown latest_report_status " + node["latest_report_status"] +")"
+    next
+  end
+end
+
+File.write(nstatusdmp, JSON.pretty_generate(nres))
+
+if wtxt.empty?
+  puts "No Puppet run issues."
+  exit 0
+else
+  puts "Puppet run problems:#{wtxt}"
+  exit 1
+end
