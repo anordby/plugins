@@ -1,0 +1,36 @@
+#! /usr/bin/ruby
+# Check availability of idle workers
+# anders@fupp.net, 2021-05-20
+
+require "httparty"
+require "pp"
+
+minidlepct=10
+
+uri="http://localhost/server-status?auto"
+response = HTTParty.get(uri)
+if not response.code==200
+  puts "Could not get OK response from uri #{uri}"
+  exit 3
+end
+
+sbmatch = response.body.match(/^Scoreboard: (\S+)/)
+if sbmatch.nil?
+  puts "No scoreboard found."
+  exit 3
+else
+  sb = sbmatch[1]
+#  puts sb
+end
+
+nworkers=sb.length
+iworkers=sb.count(".") + sb.count("_")
+idlepct=(iworkers.to_f/nworkers.to_f)*100
+
+if idlepct < minidlepct
+  puts "#{idlepct.to_s}% (#{iworkers.to_s}/#{nworkers.to_s}) workers idle, less than minimum limit #{minidlepct.to_s}."
+  exit 1
+else
+  puts "#{idlepct.to_s}% (#{iworkers.to_s}/#{nworkers.to_s}) workers idle, within minimum limit #{minidlepct.to_s}."
+  exit 0
+end
