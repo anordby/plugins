@@ -1,6 +1,8 @@
 #! /usr/bin/ruby
 # Check Lets Encrypt live certs for renewal issues
 # Anders Nordby <anders@fupp.net>, 2024-04-01
+# Run this script as root through sudo, because needs access to files not
+# readable for everyone.
 
 critdays=7
 warndays=20
