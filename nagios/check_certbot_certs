@@ -1,0 +1,61 @@
+#! /usr/bin/ruby
+# Check Lets Encrypt live certs for renewal issues
+# Anders Nordby <anders@fupp.net>, 2024-04-01
+
+critdays=7
+warndays=20
+wcerts=[]
+ccerts=[]
+ctxt=""
+wtxt=""
+
+require "openssl"
+require "pp"
+require "time"
+ccount=0
+tnow=Time.now
+Dir["/etc/letsencrypt/live/*/cert.pem"].each do |cfile|
+  cn = cfile.split("/")[4]
+  begin 
+    raw = File.read cfile
+    cert = OpenSSL::X509::Certificate.new raw
+  rescue Exception => e
+    ctxt << " #{cn} (can not read or parse cert)"
+    ccerts.push(cn)
+    next
+  end
+
+  begin
+    cvalid=cert.not_after-tnow
+  rescue Exception => e
+    ctxt << " #{cn} (can not parse cert expire)"
+    ccerts.push(cn)
+    next
+  end
+  if cvalid < (critdays*86400)
+    ctxt << " #{cn} (cert valid %.2f days, less than #{critdays.to_s} critical limit)" % (cvalid.to_i/86400)
+    ccerts.push(cn)
+  elsif cvalid < (warndays*86400)
+    wtxt << " #{cn} (cert valid %.2f days, less than #{warndays.to_s} warning limit)" % (cvalid.to_i/86400)
+    wcerts.push(cn)
+  end
+  ccount += 1
+end
+
+if ccount == 0
+  puts "No certificates found. This is unexpected."
+  exit 3
+elsif not ccerts.empty?
+  print "Found certs with critical status:" + ctxt
+  if not wcerts.empty?
+    print " Also found certs with warning status:" + wtxt
+  end
+  print "\n"
+  exit 2
+elsif not wcerts.empty?
+  puts "Found certs with warning status:" + wtxt
+  exit 2
+else
+  puts "Found #{ccount.to_s} valid certs. All is well."
+  exit 0
+end
